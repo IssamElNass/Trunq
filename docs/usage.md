@@ -1,6 +1,6 @@
 # Using Trunq
 
-[Documentation](README.md) · [Install](install.md) · [Feature reference](features.md)
+[Documentation](README.md) · [Install](install.md) · [Feature reference](features.md) · [Practical workflows](workflows.md)
 
 ## Contents
 
@@ -65,7 +65,7 @@ For SQL changes, the confirmation dialog warns about UPDATE or DELETE without a 
 | Loaded rows | All rows fetched so far | None |
 | Entire result from the server | Every row returned by running the SQL again | Separate connection; one chunk held at a time |
 
-The visible option appears when its row count differs from the loaded count. An entire-result export runs the statement again, so it can observe newer data and repeat any side effects in that SQL. Formats are CSV, JSON, Markdown, SQL INSERT and TypeScript.
+The visible option appears when its row count differs from the loaded count. File export includes all result columns, including hidden ones; select the desired columns in SQL for a narrower file. Save pending table edits and refresh before exporting their saved values. An entire-result export runs the statement again, so it can observe newer data and repeat any side effects in that SQL. Formats are CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
 The destination is replaced only after the export finishes successfully. Cancellation, query errors and write failures leave an existing destination unchanged; temporary files are cleaned up during normal error handling. Leave room on the destination filesystem for the new export.
 
@@ -75,7 +75,9 @@ CSV writes SQL NULL as an unquoted empty field and empty text as `""`, matching 
 
 Drop a UTF-8 CSV or TSV file onto the window, then check the delimiter, header, target table and inferred column types before importing. Quoted delimiters and escaped quotes are supported. Inference samples the beginning of the file; later values may require a wider type such as text.
 
-When header names normalize to the same SQL identifier, Trunq adds suffixes to keep them unique. Timestamp inference accepts positive and negative timezone offsets. The import streams through COPY in one transaction; errors and cancellation roll back the import. For an existing table, review **Truncate** before starting because it removes existing rows within that transaction.
+When header names normalize to the same SQL identifier, Trunq adds suffixes to keep them unique. Timestamp inference accepts positive and negative timezone offsets. The import streams through COPY in one transaction; errors and cancellation roll back the import. For an existing table, review **Empty it first** before starting because it removes existing rows within that transaction.
+
+For password precedence, TLS verification, URL support and profile defaults, see [the connection reference](connections.md). For step-by-step parameter, transaction, chart and diagnostic examples, see [practical workflows](workflows.md).
 
 ## SSH tunnels
 
@@ -100,7 +102,7 @@ automatically** before every new connection, so you never paste tokens by hand.
    - *Azure US Government*: `*.postgres.database.usgovcloudapi.net`
 4. **Sign-in method**:
    - **Interactive (browser)** opens the Microsoft sign-in page. After the first sign-in the refresh token is kept in
-     your keychain and new tokens are created silently for about 90 days.
+     your keychain and new tokens can be created silently until tenant policy requires another sign-in.
    - **Device code** is for machines without a browser (remote desktops, SSH). Trunq shows a code to enter at
      `microsoft.com/devicelogin` or the China equivalent.
    - **Azure CLI** reuses your `az login` session. For China run `az cloud set --name AzureChinaCloud` first.
@@ -158,11 +160,13 @@ psql -d shop -v ON_ERROR_STOP=1 -f dev/sample.sql
 
 ## Troubleshooting
 
+The [full troubleshooting guide](troubleshooting.md) also covers TLS, failed transactions, read-only tables, CSV errors, missing result rows and workspace recovery. [Settings and backups](settings.md) explains what is saved and how to move it.
+
 - **"password authentication failed" or "no password supplied"**: type the password in the field that appears in the
   sidebar or above the editor. It is remembered for the session and saved in the keychain if "Save in keychain" is on.
 - **Azure `AADSTS…` errors**: check the tenant, that your account (or its group) was added as an Entra admin or role on the
   server, and that the right cloud is selected. Try *Device code* if the browser flow is blocked by policy.
 - **SSH "host key has CHANGED"**: the server presents a different key than before. If the server was reinstalled,
-  remove the old line from `known_hosts` and connect again.
+  verify the new fingerprint with the administrator before updating the old entry in the applicable `known_hosts` file.
 - **The window is blank on an old GPU or a virtual machine**: run with `WGPU_BACKEND=gl` to use OpenGL.
 - **Keychain prompts on macOS**: click *Always Allow* once so Trunq can read its saved passwords.

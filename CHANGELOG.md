@@ -7,6 +7,8 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Daily default-branch nightly prereleases with macOS, Windows and Linux packages, checksums, source provenance and manual triggering; packaging changes are built on pull requests without publication.
+- Connection/TLS/password reference, settings and workspace backup guide, practical query and diagnostic workflows, and expanded troubleshooting.
 - Task-based documentation index, separate installation, usage, feature and developer guides, and a shorter project README.
 - Expanded handbook with a first-query walkthrough, SSH setup, bound parameters, export scopes and reading progress.
 - ER diagram entry points in database, schema and table menus and the command palette.

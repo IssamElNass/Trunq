@@ -43,6 +43,8 @@ Grab the latest build from the [**Releases page**](https://github.com/IssamElNas
 
 Every release lists SHA-256 checksums in `SHA256SUMS.txt`. Prefer to build it yourself? See [Install from source](docs/install.md#build-from-source).
 
+Development snapshots are documented under [nightly builds](docs/install.md#nightly-builds).
+
 ## Features
 
 - **SQL editor:** statement-aware Run, completion, bound parameters, formatting, snippets and query history.
@@ -76,7 +78,10 @@ Passwords are saved in your operating system keychain. Trunq also understands `~
 | Task | Guide |
 |---|---|
 | Install a release or build from source | [Installation](docs/install.md) |
-| Query, edit, import and export | [Using Trunq](docs/usage.md) |
+| Query, edit, import and export | [Using Trunq](docs/usage.md) · [Practical workflows](docs/workflows.md) |
+| Configure TLS, pgpass, SSH and Azure | [Connections](docs/connections.md) |
+| Change settings or back up a workspace | [Settings and backups](docs/settings.md) |
+| Diagnose an error | [Troubleshooting](docs/troubleshooting.md) |
 | Browse features and screenshots | [Feature reference](docs/features.md) |
 | Develop, test and release | [Developer guide](docs/development.md) |
 | See every documentation page | [Documentation index](docs/README.md) |

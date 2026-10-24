@@ -54,15 +54,49 @@ src/
   `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 
-### Releases
+## Release and nightly builds
 
-Releases are automated by [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+The [Release workflow](../.github/workflows/release.yml) uses one set of packaging jobs for stable tags, nightly snapshots and packaging previews. Source is resolved to one commit before platform jobs start; all platforms check out that exact SHA.
 
-1. Bump `version` in `Cargo.toml` and add the notes to `CHANGELOG.md`.
-2. `git tag v0.2.0 && git push origin v0.2.0`
-3. GitHub Actions builds a universal macOS `.dmg` (and `.app.zip`), a Linux `.deb` and `.tar.gz`, and a Windows `.zip`,
-   writes `SHA256SUMS.txt` and publishes them as a GitHub Release with the changelog section as release notes.
-   Add the `APPLE_*` secrets to also sign and notarize the macOS build.
+### Stable releases
 
-CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) checks formatting and clippy (warnings denied), builds and tests on
-macOS, Windows and Linux, and runs the protocol tests against PostgreSQL 13 to 18.
+1. Update `version` in `Cargo.toml`, keep `Cargo.lock` in sync, and move the relevant **Unreleased** notes into a matching section in `CHANGELOG.md`.
+2. Complete the normal checks and commit the release changes.
+3. Create and push the matching tag, for example `git tag v0.2.0 && git push origin v0.2.0` for package version `0.2.0`.
+4. The workflow verifies the tag/version match, builds a universal macOS `.dmg` and `.app.zip`, a Linux `.deb` and `.tar.gz`, and a Windows `.zip`.
+5. After every platform succeeds, it assembles `SHA256SUMS.txt` and release notes, then publishes the GitHub Release. A Cargo prerelease version produces a GitHub prerelease.
+
+To rebuild an existing tag, run **Actions → Release → Run workflow** from the updated default branch and enter that tag as the `tag` input. The workflow's metadata tooling is loaded separately from the source tag, so old tags do not need to contain the new nightly helper. Add the `APPLE_*` secrets listed in the workflow to enable signing and notarization; otherwise macOS uses the bundle script's ad-hoc signing.
+
+### Daily nightly snapshots
+
+| Item | Behaviour |
+|---|---|
+| Trigger | Daily at 02:00 UTC; manual dispatch with `tag=nightly` |
+| Source | Latest default-branch source for scheduled/manual nightly builds, fixed to one SHA for every package |
+| Identity | `nightly-YYYYMMDD-<run-number>-g<short-sha>` |
+| Checks | Unit tests in each platform job, followed by all platform release builds and packaging |
+| Downloads | Same platform formats as stable, plus `BUILD_INFO.txt` and `SHA256SUMS.txt` |
+| Publication | A separate immutable prerelease; it does not become the latest stable release |
+| Debian version | `<base-version>~nightly.<date>.<run>+g<sha>`, which sorts before the matching stable version |
+| Actions artifact retention | 7 days for snapshots; release assets remain on the GitHub Release |
+
+The schedule starts only once this workflow is on the default branch. GitHub scheduled events may be delayed. Each successful run has a distinct tag, so the workflow does not move an older nightly tag or delete previous releases. Failed builds leave previous published snapshots available.
+
+The app's displayed version remains the Cargo source version. Identify a snapshot from its filename, release commit and `BUILD_INFO.txt`. Nightlies are application snapshots built with the stable Rust toolchain; they do not require Rust nightly. Unit tests without database/SSH fixtures do not exercise those integrations; the separate CI protocol matrix covers PostgreSQL 13–18.
+
+### Packaging previews and workflow maintenance
+
+Pull requests changing the release workflow, metadata helpers/tests or macOS bundle script build snapshot packages and assemble a `release-bundle` artifact. Publication is skipped on pull requests, and macOS signing/notarization is skipped there too. Preview artifacts require access to that Actions run and are retained for seven days.
+
+The metadata step has Python 3.12 configured; local checks require Python 3.11 or newer. Run its standard-library checks locally:
+
+```sh
+python3 -m unittest discover -s scripts -p test_release_metadata.py -v
+```
+
+Run `actionlint .github/workflows/release.yml` when actionlint is available. Keep `scripts/release-metadata.py` responsible for channel routing, version validation, exact source identity and Debian ordering; do not duplicate those decisions across platform jobs. The assembly job creates provenance, checksums and notes before the publishing job receives write permission.
+
+If a nightly is missing, inspect **Actions → Release** for a failed or queued job, check that scheduled workflows are enabled, and confirm that the workflow exists on the default branch. A green package preview does not mean a prerelease was published. Maintainers can request a fresh default-branch snapshot with a manual `nightly` dispatch.
+
+CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) separately checks formatting and Clippy, builds and tests on macOS, Windows and Linux, checks the website, and runs protocol tests against PostgreSQL 13–18.

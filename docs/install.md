@@ -15,6 +15,44 @@ Grab the latest build from the [**Releases page**](https://github.com/IssamElNas
 
 Every release lists SHA-256 checksums in `SHA256SUMS.txt`. Prefer to build it yourself? See [Build from source](#build-from-source).
 
+## Nightly builds
+
+Nightlies are development snapshots of the latest default-branch commit. Once the updated Release workflow is on the default branch, GitHub Actions builds them daily at 02:00 UTC (03:00 in Paris in winter, 04:00 in summer). GitHub can delay scheduled runs. Maintainers can also choose **Actions → Release → Run workflow** and enter `nightly` as the tag input.
+
+Find snapshots in [nightly prereleases](https://github.com/IssamElNass/Trunq/releases?q=nightly&expanded=true). They do not replace the latest stable release or its download buttons. Every successful run creates its own tag, for example `nightly-20261024-17-gabcdef0`, containing the UTC date, workflow run number and source commit prefix.
+
+| Platform | Nightly asset |
+|---|---|
+| macOS, Apple Silicon and Intel | `Trunq-nightly-<identity>-macos-universal.dmg` or `.app.zip` |
+| Debian / Ubuntu, x86_64 | `trunq_nightly-<identity>_amd64.deb` |
+| Other Linux, x86_64 | `trunq-nightly-<identity>-linux-x86_64.tar.gz` |
+| Windows, x86_64 | `Trunq-nightly-<identity>-windows-x86_64.zip` |
+| Build identity and integrity | `BUILD_INFO.txt` and `SHA256SUMS.txt` |
+
+`<identity>` is the date, run number and commit prefix from that release. The app may still display the Cargo package version; keep `BUILD_INFO.txt` or the asset filename when reporting a nightly issue. Debian packages receive a dated nightly package version that sorts before the matching stable version.
+
+All three platform builds and their snapshot unit tests must succeed before publication. A failed platform build does not publish a new release. Nightlies may contain behaviour changes and are not promoted to stable automatically. Back up your workspace before trying one; use [a separate workspace](settings.md#start-an-isolated-workspace) if you want to keep its settings separate. On macOS, copying another app named Trunq into Applications can replace the existing copy.
+
+To return to stable, close Trunq and install a stable release. Restore a workspace backup if its settings need reverting. Installing an older Debian package may require an explicit version selection or downgrade through the package manager.
+
+## Verify a download
+
+Download `SHA256SUMS.txt` from the same release as the asset. Compute that asset's SHA-256 and compare it with the matching filename in the manifest. For example, after substituting the downloaded filename:
+
+```sh
+# Linux
+sha256sum ./downloaded-trunq-package.tar.gz
+# macOS
+shasum -a 256 ./downloaded-Trunq.dmg
+```
+
+```powershell
+# Windows PowerShell
+Get-FileHash -LiteralPath .\downloaded-Trunq.zip -Algorithm SHA256
+```
+
+A checksum mismatch means the file does not match that release's manifest; download it again before installing. Checksums identify the bytes, while `BUILD_INFO.txt` identifies a nightly's source commit and workflow run.
+
 ## Build from source
 
 The easiest way is a [pre-built download](#download). Building requires **Rust 1.95+**, matching the GUI dependencies. To build it yourself:

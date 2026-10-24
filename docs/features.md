@@ -47,7 +47,7 @@
 <p><img src="screenshots/chart.png" alt="Chart of a query result" width="800"></p>
 
 - Turn any result into a bar or line chart. A time or numeric X axis becomes a line, categories become bars.
-- A colour-blind-safe palette, hover tooltips, a legend and direct labels. Trunq never mixes very different scales on one axis.
+- A colour-blind-safe palette, hover tooltips, a legend and direct labels. Default series selection favours similar scales; selecting very different scales shows a warning. See [chart controls and limits](workflows.md#make-a-chart-with-meaningful-axes).
 
 ### Edit data safely
 
@@ -67,7 +67,7 @@ Export is explicit about what you get, so you never think you exported a full da
 
 - **Visible rows**: exactly what you see, with search, filters and sorting applied.
 - **Loaded rows**: the rows fetched so far, with a note when more rows exist on the server.
-- **Entire result from the server**: runs the query again on a separate connection and streams every row straight to the file. Nothing is loaded into memory, and you can cancel at any time.
+- **Entire result from the server**: runs the query again on a separate connection and streams every row straight to the file. Only a chunk is held in memory, and you can request cancellation.
 
 Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
@@ -77,7 +77,7 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
 - **Lock detective**: when a query runs longer than 1.5 s Trunq shows what it waits for and *which session blocks it* (user, application, query, transaction age), with one-click *Cancel its query* or *Terminate session*.
 - **Live progress** of `CREATE INDEX`, `VACUUM`, `ANALYZE`, `COPY` and `CLUSTER`.
-- **Dry run** (⌥⌘⏎): runs an `INSERT`, `UPDATE` or `DELETE` in a transaction, shows exactly which rows would change and always rolls back.
+- **Dry run** (⌥⌘⏎): runs an `INSERT`, `UPDATE` or `DELETE` in a transaction, previews returned rows up to the fetch page size and rolls back. See [transaction behaviour and rollback limits](workflows.md#auto-commit-manual-and-failed-transactions).
 
 <p><img src="screenshots/lint.png" alt="Migration linter" width="800"></p>
 

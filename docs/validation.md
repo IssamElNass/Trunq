@@ -19,6 +19,16 @@ The new regressions cover CSV NULL versus empty text, SQL non-finite values, pre
 
 The SSH test still returns early without its external fixture. Real SSH, Azure, keychains, macOS, Windows and other PostgreSQL versions were not exercised in this pass. Website checks are now configured in CI; the local run above used Chromium, not a remote Actions runner.
 
+### Documentation and nightly-build follow-up
+
+- The additional connection, settings/backup, workflow and troubleshooting guides were checked against the current source. Their local page, heading and image links resolve.
+- The practice-table, bound-value, transaction/rollback and chart SQL examples ran successfully against the disposable PostgreSQL 17 database.
+- `python3 -m unittest discover -s scripts -p test_release_metadata.py -v`: five release-routing tests passed, covering stable tag validation, prerelease detection, nightly identity, repeated runs and invalid input.
+- `actionlint` 1.7.7 accepted the updated Release workflow. A CLI metadata run produced a dated nightly identity with an exact source SHA, and `dpkg --compare-versions` confirmed the nightly sorts before its matching stable version.
+- The twelve Chromium browser groups passed after expanding the handbook, FAQ, settings and nightly documentation.
+
+The Release workflow builds packaging previews on pull requests and skips publication there. A scheduled nightly starts only after the workflow is on the default branch; local metadata/lint checks do not establish that a release was published. The PR's Actions runs provide the platform packaging results.
+
 ## 23 October 2026: earlier validation
 
 23 October 2026. Commands were run locally; the CI matrix is configuration, not a claim that every CI runner was executed here.

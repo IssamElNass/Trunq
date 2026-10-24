@@ -158,9 +158,10 @@
     })));
   } else {
     addCommands([
-      ["Install Trunq", "install"], ["Connect to your first database", "first-steps"],
+      ["Install Trunq", "install"], ["Nightly builds", "nightly-builds"], ["Connect to your first database", "first-steps"],
       ["Azure & Microsoft Entra ID", "azure"], ["Safety features", "safety"],
       ["ER diagrams & metadata", "relationships"], ["Docker & Docker Hub", "docker"], ["Performance checks", "performance"],
+      ["Settings", "settings"], ["Back up your workspace", "backup-restore"], ["TLS verification", "tls-modes"],
       ["Keyboard shortcuts", "shortcuts"], ["Troubleshooting", "troubleshooting"], ["Build from source", "build"],
     ].map(([label, id]) => ({ group: "Docs", label, icon: "book", action: goto(ROOT + "docs/#" + id) })));
   }

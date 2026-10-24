@@ -101,6 +101,7 @@
         <a href="#health">Health check</a>
         <a href="#connection-management">Connection management</a>
         <p>Reference</p>
+        <a href="#settings">Settings</a>
         <a href="#shortcuts">Keyboard shortcuts</a>
         <a href="#storage">Where data is stored</a>
         <a href="#troubleshooting">Troubleshooting</a>
@@ -147,7 +148,11 @@
         <b>macOS says it "can't be opened because it is from an unidentified developer"?</b>
         Right-click <b>Trunq.app → Open</b> once. After that it opens normally.
       </div>
-      <p>Every release includes SHA-256 checksums in <code>SHA256SUMS.txt</code>, so you can verify your download. If you'd rather compile Trunq yourself, see <a href="#build">Build from source</a>.</p>
+      <p>Every release includes SHA-256 checksums in <code>SHA256SUMS.txt</code>. Compute your download's SHA-256 with <code>sha256sum</code> on Linux, <code>shasum -a 256</code> on macOS or <code>Get-FileHash -Algorithm SHA256</code> in PowerShell, then compare the matching filename. If you'd rather compile Trunq yourself, see <a href="#build">Build from source</a>.</p>
+      <h3 id="nightly-builds">Nightly builds</h3>
+      <p>The Release workflow builds the latest default-branch source every day at 02:00 UTC (03:00 in Paris in winter, 04:00 in summer), once the workflow is merged into that branch. GitHub may delay scheduled runs. Maintainers can also run it manually with the tag input <code>nightly</code>.</p>
+      <p>Snapshots appear as separate <a href="https://github.com/IssamElNass/Trunq/releases?q=nightly&amp;expanded=true">nightly prereleases</a> for macOS, Windows and Linux. They keep the stable download channel separate. Each release identifies its date, workflow run and commit, and includes <code>BUILD_INFO.txt</code> and <code>SHA256SUMS.txt</code>.</p>
+      <p>Use a <a href="#workspace-launch">separate workspace</a> or back up your settings before trying a snapshot. The app may display its Cargo source version; use the asset filename or build information to identify the nightly. See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/install.md#nightly-builds">nightly installation guide</a> for package names and returning to stable.</p>
     </section>
 
     <section>
@@ -177,17 +182,32 @@ psql -d shop -f dev/sample.sql</code></pre></div>
       <h2 id="connecting">Connection options</h2>
       <p>Trunq speaks the PostgreSQL protocol directly and supports the usual ways of connecting:</p>
       <ul>
-        <li><b>Encryption (TLS):</b> every <code>sslmode</code> from <code>disable</code> to <code>verify-full</code>.</li>
+        <li><b>Encryption (TLS):</b> <code>disable</code>, <code>prefer</code>, <code>require</code>, <code>verify-ca</code> and <code>verify-full</code>.</li>
         <li><b>Sign-in methods:</b> SCRAM-SHA-256, MD5 and trust.</li>
         <li><b>Unix sockets:</b> enter the socket directory (for example <code>/tmp</code>) as the host.</li>
         <li><b><code>~/.pgpass</code>:</b> picked up automatically.</li>
         <li><b>Connection URLs:</b> paste a <code>postgres://</code> URL and Trunq fills in the form.</li>
       </ul>
+      <h3 id="tls-modes">Choose the TLS checks you need</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mode</th><th>Encryption</th><th>Certificate / hostname checks</th></tr></thead>
+        <tbody>
+          <tr><td><code>disable</code></td><td>No PostgreSQL TLS</td><td>Neither</td></tr>
+          <tr><td><code>prefer</code> (default)</td><td>TLS if accepted; plaintext if the server declines TLS</td><td>Neither</td></tr>
+          <tr><td><code>require</code></td><td>Required</td><td>Neither</td></tr>
+          <tr><td><code>verify-ca</code></td><td>Required</td><td>Certificate trust through the platform store</td></tr>
+          <tr><td><code>verify-full</code></td><td>Required</td><td>Certificate trust and database hostname</td></tr>
+        </tbody>
+      </table></div>
+      <p><code>require</code> encrypts but does not verify the server's identity. A private CA needs trust configured in the platform store; the dialog has no per-profile CA-file or client-certificate selector. Inside SSH, the hostname checked is still the database Host. Local Unix sockets use socket permissions and PostgreSQL authentication rather than TLS negotiation.</p>
+      <h3 id="password-sources">Passwords, URLs and pgpass</h3>
+      <p>A supplied session password takes precedence over a saved keychain password, then Trunq tries the first matching entry in <code>~/.pgpass</code> or <code>PGPASSFILE</code>. Password-file fields are <code>host:port:database:user:password</code>; the first four support <code>*</code>, and literal colons/backslashes need escaping. Protect the file because its passwords are plaintext.</p>
+      <p>URL import reads the user, password, host, port, database and <code>sslmode</code>. Other query parameters are not applied; set timeouts, read-only mode and SSH in the form. Percent-encode reserved characters and put IPv6 hosts in brackets. Editing a profile affects new sessions; reconnect open tabs to use its changes.</p>
       <h3 id="connection-safety">Per-connection safety settings</h3>
       <ul>
         <li><b>Environment:</b> label the connection LOCAL, DEV, TEST, STAGING or PRODUCTION. Production is shown in red.</li>
-        <li><b>Read-only:</b> prevents accidental writes.</li>
-        <li><b>Statement timeout:</b> stops runaway queries automatically.</li>
+        <li><b>Read-only:</b> sets <code>default_transaction_read_only=on</code>; database role privileges remain the access control.</li>
+        <li><b>Statement timeout:</b> a positive value limits statement duration; <code>0</code> adds no profile-specific limit. The connect timeout defaults to 10 seconds.</li>
       </ul>
     </section>
 
@@ -251,6 +271,7 @@ WHERE country = :country
 ORDER BY id
 LIMIT 100;</code></pre></div>
       <p>This example uses <code>dev/sample.sql</code>. Enter <code>NL</code> when prompted, without SQL quotes. Save frequently used queries as snippets from the editor menu.</p>
+      <p>Enter parameter values without SQL quotes. Empty input sends empty text; trimmed input <code>NULL</code>, ignoring case, sends SQL NULL. Add a type cast when PostgreSQL cannot infer a parameter's type. Templates using <code>?</code> need that marker replaced; use <code>:name</code> to request a value. History records executed SQL rather than its parameter values, so keep reusable named queries as snippets or SQL files.</p>
       <h3 id="query-execution">Choose what runs</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>Action</th><th>What happens</th></tr></thead>
@@ -285,6 +306,9 @@ LIMIT 100;</code></pre></div>
         </tbody>
       </table></div>
       <p>Entire-result export runs the SQL again, including any side effects. The destination is replaced only after success; a cancelled or failed export preserves an existing file. In CSV, SQL NULL is an unquoted empty field and empty text is <code>""</code>.</p>
+      <p>File scopes choose rows; hidden columns are still included. Select the required columns in SQL for a narrower file. Save pending table edits and refresh before exporting saved values. An entire-result export cannot see the tab's temporary tables, session-local settings or uncommitted changes because it uses another connection.</p>
+      <h3 id="result-limits">Paging and pinned results</h3>
+      <p>Only the final statement in a run keeps a fetchable cursor. Run a large SELECT by itself when you need to keep loading pages. Pinning retains the rows already loaded; another run closes the previous cursor, and pinned rows are not restored after the app exits. Fetch or export what you need first.</p>
       <h3 id="compare-results">Compare and inspect</h3>
       <p>Pin a result to keep it when you run another query, then use the side-by-side view. Select two to six rows to compare their differences, or open card view to read a wide record vertically. Open a JSON value for a searchable tree with copyable paths.</p>
     </section>
@@ -298,18 +322,28 @@ LIMIT 100;</code></pre></div>
         <li><b>Preview the generated SQL,</b> then save everything in one transaction.</li>
       </ol>
       <p>If a statement fails, that save is rolled back and pending edits remain available to fix and retry. Within an existing explicit transaction, Save uses a savepoint and leaves the transaction open for you to commit or roll back.</p>
+      <h3 id="transactions">Auto-commit, Manual and failed transactions</h3>
+      <p><b>Manual</b> starts a transaction before running SQL when needed. Use <b>Commit</b> to retain its changes or <b>Rollback</b> to discard them. Switching the selector does not finish an already-open transaction. Transactions belong to one tab; disconnecting loses its uncommitted work.</p>
+      <p>After an error in an explicit transaction, <b>Transaction failed</b> means you must roll back before normal SQL can continue. Find the original error earlier in Messages. A paged SELECT can also show <b>In transaction</b> while its cursor remains open; finish fetching or close its session when it is no longer needed.</p>
     </section>
 
     <section>
       <h2 id="charts">Charts</h2>
-      <p>Turn any result into a chart with one click. Time or numeric X values become a line chart, and categories become bars. The palette is colour-blind safe, with hover tooltips, a legend and direct labels. Trunq never mixes wildly different scales on one axis.</p>
+      <p>Turn any result into a chart, choose X and numeric Y columns, and use <b>Auto</b>, <b>Bars</b> or <b>Lines</b>. Auto uses lines for time/numeric X values and bars for categories. Default series selection favours similar scales; selecting very different scales shows a warning.</p>
+      <p>Charts use loaded result rows independently of grid search/filter chips. They do not aggregate for you. Filter and GROUP BY in SQL first, then choose the axes. Up to eight series are selectable; bars display at most 300 rows.</p>
+      <div class="codeblock"><pre data-copyable><code>SELECT status, count(*) AS orders, sum(total) AS revenue
+FROM shop.orders
+GROUP BY status
+ORDER BY status;</code></pre></div>
+      <p>This example uses <code>dev/sample.sql</code>. Plot order counts and revenue separately when their scales differ.</p>
     </section>
 
     <section>
       <h2 id="import">Importing CSV files</h2>
       <p>Drop a CSV or TSV file onto the window. Trunq works out the delimiter, header, column names and <b>column types</b> (integer, bigint, numeric, boolean, date, timestamptz, uuid, jsonb).</p>
       <p>Create a new table or add to an existing one. The data is streamed in a single transaction with live progress, which is the fastest way to load data into PostgreSQL.</p>
-      <p>Check the preview before importing: inference uses a sample, so later values may need a wider type. Quoted delimiters and timezone offsets are supported, and colliding header names receive unique suffixes. Errors and cancellation roll back the import.</p>
+      <p>Check the preview before importing: it reads up to the first 1 MiB and infers types from up to 2,001 records, including a header when enabled, so later values may need a wider type. Quoted delimiters and timezone offsets are supported, and colliding header names receive unique suffixes. For an existing table, verify every mapping: initial mapping tries names, then positions. <b>Empty it first</b> truncates that table within the import transaction. Errors and cancellation roll back the import.</p>
+      <p>Use UTF-8 CSV/TSV. PostgreSQL COPY CSV treats an unquoted empty field as NULL and a quoted empty field as empty text. The preview does not distinguish them as separate inferred types. A literal <code>NULL</code> field is text, subject to the target column's type.</p>
     </section>
 
     <section>
@@ -361,7 +395,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
       <p>When a query has been running for more than 1.5 seconds, Trunq shows what it's waiting for and <b>which session is blocking it</b>, including the user, application, query and transaction age. One click cancels that session's query or terminates the session.</p>
 
       <h3 id="dry-run">Dry run</h3>
-      <p>Press <kbd data-alt>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code> inside a transaction. Trunq shows exactly which rows would change and then <b>always rolls back</b>.</p>
+      <p>Press <kbd data-alt>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd> to preview an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code>. Trunq uses a transaction or savepoint and rolls back before reporting completion, preserving an existing explicit transaction. Returned-row previews are limited by the fetch page. Sequences and external side effects of server functions are not generally undone by rollback. <b>EXPLAIN ANALYZE</b> executes its query; plain EXPLAIN plans it.</p>
 
       <h3 id="migration-linter">Migration linter</h3>
       <p>Before running a change that would block or rewrite a table, Trunq explains the risk and the safe alternative. Plain <code>CREATE INDEX</code> statements get a one-click <i>Add CONCURRENTLY</i> fix. Trunq checks for:</p>
@@ -413,6 +447,24 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
     </section>
 
     <section>
+      <h2 id="settings">Settings</h2>
+      <p>Open the gear icon or search for <b>Settings</b> in the command palette. Changes save automatically.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Setting</th><th>Default</th><th>Choices / effect</th></tr></thead>
+        <tbody>
+          <tr><td>Theme</td><td>Dark</td><td>Dark or Light</td></tr>
+          <tr><td>Interface zoom</td><td>100%</td><td>75–160%</td></tr>
+          <tr><td>Editor / grid font</td><td>13.5 / 12.5 px</td><td>10–22 / 10–18 px</td></tr>
+          <tr><td>Rows per fetch</td><td>1,000</td><td>100–100,000; rows in each page, not a total result limit</td></tr>
+          <tr><td>Autocomplete</td><td>On</td><td>Suggest while typing; Ctrl+Space requests completion explicitly</td></tr>
+          <tr><td>UPPERCASE keywords</td><td>On</td><td>Generated completion/formatting case</td></tr>
+          <tr><td>Confirm destructive SQL</td><td>On</td><td>Enables destructive-query and migration-risk checks</td></tr>
+        </tbody>
+      </table></div>
+      <p>A larger fetch size reduces round trips but transfers and retains more data at once. <b>Load all</b> retains the full result in memory. Read-only mode, timeouts and browser options are separate per-connection settings.</p>
+    </section>
+
+    <section>
       <h2 id="shortcuts">Keyboard shortcuts</h2>
       <p data-mod-hint>On Windows and Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
       <div class="table-wrap">
@@ -453,7 +505,18 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
           </tbody>
         </table>
       </div>
-      <p>Set <code>TRUNQ_CONFIG_DIR=/path/to/workspace</code> to keep settings, history, snippets and table layouts in an isolated directory. Passwords remain in the operating system keychain. To reset a workspace, close Trunq and back up its settings folder before removing it.</p>
+      <h3 id="workspace-launch">Start a separate workspace</h3>
+      <p>Set <code>TRUNQ_CONFIG_DIR</code> before launching. It changes settings, history and Trunq's SSH known-hosts location, but does not create a separate OS keychain. Copied profiles keep their IDs and can still refer to the same keychain entries on that computer.</p>
+      <div class="codeblock"><pre data-copyable><code>TRUNQ_CONFIG_DIR="$PWD/trunq-workspace" trunq</code></pre></div>
+      <p>The example is for macOS/Linux with Trunq on PATH. Windows PowerShell uses <code>$env:TRUNQ_CONFIG_DIR = Join-Path $PWD 'trunq-workspace'</code> before starting the executable.</p>
+      <h3 id="backup-restore">Back up and restore</h3>
+      <ol class="steps">
+        <li>Finish or roll back transactions, save table edits and SQL files, and export any result rows you need.</li>
+        <li>Close Trunq, then copy the settings directory, including <code>config.json</code>, <code>history.jsonl</code> and <code>known_hosts</code> when present.</li>
+        <li>Copy external SQL files and exports separately. Restore the settings directory while Trunq is closed, then recheck hosts, labels and key paths.</li>
+      </ol>
+      <p>Loaded results, pinned rows, pending edits and open transactions are not restored. Copying this folder does not transfer the OS keychain, SSH private keys or Azure CLI login, and is not a backup of database data. SQL text/history can contain sensitive literals and comments; review files before sharing them.</p>
+      <p>Use a new empty workspace to try clean settings, or rename the existing directory while the app is closed so you can recover it. <b>Query history → Clear</b> clears history, not snippets or editor text. See <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/settings.md">settings and backup details</a>.</p>
     </section>
 
     <section>
@@ -467,10 +530,20 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
         <dd>Start Trunq with <code>WGPU_BACKEND=gl</code> to use OpenGL.</dd>
         <dt>Keychain prompts on macOS</dt>
         <dd>Click <i>Always Allow</i> once so Trunq can read its saved passwords.</dd>
+        <dt>"current transaction is aborted"</dt>
+        <dd>Find the original statement error in Messages, choose <b>Rollback</b>, then correct and retry it. Switching Manual/Auto-commit does not finish the transaction.</dd>
+        <dt>The table is read-only or Save fails</dt>
+        <dd>Use a table view with a primary key, check the profile's read-only setting and database permissions, then inspect constraints in the error. Duplicate row omits generated/key fields, but another unique value may still need changing.</dd>
+        <dt>Search, charts or exports show unexpected data</dt>
+        <dd>Check loaded rows versus server data, remembered filters, hidden columns and pending edits. Charts use loaded rows independently of grid filtering; file exports include hidden columns. Entire-result exports cannot access a tab's temporary tables or uncommitted changes.</dd>
+        <dt>CSV works in preview but fails later</dt>
+        <dd>Inference samples the start of the file. Review later values, widen the target type, and check header, delimiter, mapping and constraints. The import rolls back on error.</dd>
+        <dt>Settings or tabs disappeared</dt>
+        <dd>Check the account and <code>TRUNQ_CONFIG_DIR</code>. A missing or malformed configuration loads defaults; close the app and preserve an existing file before recovery. Loaded result data is not saved with tabs.</dd>
         <dt>macOS won't open the app</dt>
         <dd>Right-click <b>Trunq.app → Open</b> once, or run <code>xattr -dr com.apple.quarantine /Applications/Trunq.app</code>.</dd>
       </dl>
-      <p>Still stuck? <a href="https://github.com/IssamElNass/trunq/issues/new/choose">Open an issue on GitHub</a>.</p>
+      <p>See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/troubleshooting.md">full troubleshooting guide</a> for connection, TLS, SSH, transaction, import and workspace checks. When opening an issue, include version/commit, OS, PostgreSQL version, exact error and minimal steps; redact secrets and sensitive query data.</p>
     </section>
 
     <section>
@@ -544,6 +617,9 @@ cargo clippy --locked --all-targets -- -D warnings</code></pre></div>
       <p>For visual checks without OS permissions, drive the app with <code>TRUNQ_SCRIPT</code>:</p>
       <div class="codeblock"><pre data-copyable><code>TRUNQ_SCRIPT="wait:3;run;wait:2;shot:/tmp/query.png;open:shop.orders;wait:2;shot:/tmp/table.png;quit" cargo run</code></pre></div>
       <p>Steps: <code>wait:&lt;s&gt;</code>, <code>run</code>, <code>runall</code>, <code>dryrun</code>, <code>explain[:analyze]</code>, <code>sql:&lt;text&gt;</code> (separate statements with <code>;;</code>), <code>open:&lt;schema.table&gt;</code>, <code>tab:&lt;n&gt;</code>, <code>palette:&lt;query&gt;</code>, <code>health</code>, <code>newconn</code>, <code>connections</code>, <code>theme:light|dark</code>, <code>shot:&lt;file.png&gt;</code>, <code>quit</code>. Scripted runs never overwrite your saved workspace.</p>
+      <h3 id="nightly-maintenance">Nightly automation and package previews</h3>
+      <p>Stable tags and daily nightlies share the Release workflow. It resolves one source commit, runs snapshot unit tests and packages each platform, then assembles checksums/provenance before publication. Nightlies use distinct dated prerelease tags and do not move the stable download channel. A failed platform build does not publish a snapshot.</p>
+      <p>Pull requests changing packaging produce a <code>release-bundle</code> Actions artifact without publishing or notarizing. Preview artifacts remain for seven days. The schedule runs after the workflow is on the default branch; maintainers can use manual <code>tag=nightly</code> dispatch for a fresh default-branch snapshot. See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/development.md#release-and-nightly-builds">maintainer guide</a>.</p>
       <h3 id="releases">Releases</h3>
       <ol class="steps">
         <li>Bump <code>version</code> in <code>Cargo.toml</code> and add the notes to <code>CHANGELOG.md</code>.</li>
