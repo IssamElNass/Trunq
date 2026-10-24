@@ -12,38 +12,53 @@ Thanks for helping make Trunq better! Bug reports, ideas, documentation and code
 
 ```bash
 # Rust stable (1.95+) via https://rustup.rs
-git clone <this repository> trunq && cd trunq
+git clone https://github.com/IssamElNass/Trunq.git trunq && cd trunq
 cargo run            # start the app
 cargo test           # unit tests
 ```
 
-Linux needs a few system libraries: see the [README](README.md#linux).
+See [installation](docs/install.md#build-from-source) for platform dependencies and the [developer guide](docs/development.md) for code layout, checks and release instructions. The [documentation index](docs/README.md) links to the user guides.
 
 ### A database to play with
 
 `dev/sample.sql` creates a realistic sample database:
 
 ```bash
-createdb shop && psql -d shop -f dev/sample.sql
+createdb shop && psql -d shop -v ON_ERROR_STOP=1 -f dev/sample.sql
 ```
 
-### Protocol tests against a real server
+The sample script drops and recreates its sample schemas. Use a disposable database.
+
+### Checks before a pull request
 
 ```bash
-TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test live_tests
+cargo fmt --all --check
+cargo build --locked
+cargo test --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
-CI runs these against PostgreSQL 13 to 18.
+### Integration tests against a real server
+
+```bash
+TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test --locked live_tests -- --test-threads=1
+```
+
+CI runs these against PostgreSQL 13 to 18. Without the variable, database tests return early; a passing unit suite alone does not verify PostgreSQL. SSH tests also need their separate environment. See [the developer guide](docs/development.md#postgresql-integration-tests).
 
 ### Looking at the UI without clicking around
 
-`TRUNQ_SCRIPT` drives the app and saves screenshots (see the README's *Development* section), e.g.
+`TRUNQ_SCRIPT` drives the app and saves screenshots (see [scripted UI checks](docs/development.md#code-layout-and-scripted-ui)), e.g.
 
 ```bash
 TRUNQ_SCRIPT="wait:3;run;wait:2;shot:/tmp/query.png;quit" cargo run
 ```
 
 Please attach before/after screenshots to pull requests that change the UI.
+
+### Website and handbook
+
+The static site lives in `website/` and needs no build step. See [the website guide](website/README.md#check-website-changes) for the Playwright regression suite that runs in CI. Keep documentation anchors stable and check desktop/mobile layouts in both themes when changing navigation or shared styles.
 
 ## Code guidelines
 

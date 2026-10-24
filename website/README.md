@@ -9,7 +9,7 @@ docs/index.html   documentation
 styles.css        shared styles (light & dark theme)
 site.js           shared: theme, OS detection, ⌘K search, tabs, copy buttons
 home.js           landing page: trunk line, unfolding hero, million-row table, deck, console, switch, receipt, chat, dock
-docs.js           docs: sidebar highlighting, "On this page", heading anchors, FAQ section
+docs.js           docs: section navigation, heading anchors, reading progress, FAQ section
 faq.js            every FAQ question (feeds the home page chat, the docs FAQ and ⌘K search)
 assets/           logos, icons, screenshots (WebP, converted from docs/screenshots)
 fonts/            Inter & JetBrains Mono, subset to WOFF2 (SIL OFL)
@@ -21,6 +21,20 @@ fonts/            Inter & JetBrains Mono, subset to WOFF2 (SIL OFL)
 cd website
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
+
+## Check website changes
+
+The browser regression suite uses Node.js, Playwright and Chromium, and runs in [CI](../.github/workflows/ci.yml). The website itself still has no dependencies or build step. With the local server running, execute from the repository root:
+
+```bash
+TRUNQ_CHROMIUM=/usr/bin/chromium node scripts/check-website.cjs
+```
+
+If Playwright is not available, install it outside the checkout with `npm install --prefix /tmp/trunq-web-tests playwright@1.62.1`, then prefix the command with `NODE_PATH=/tmp/trunq-web-tests/node_modules`. Set `TRUNQ_CHROMIUM` to your Chromium executable, or omit it after installing the bundled browser with `/tmp/trunq-web-tests/node_modules/.bin/playwright install chromium`. `TRUNQ_SITE_URL` changes the server address.
+
+The checks cover mobile and desktop layouts in both themes, heading links, build tabs, exact code copying and clipboard fallback, search focus and dismissal, FAQ links, mobile navigation and unavailable browser storage. They fail on browser exceptions, missing resources, duplicate IDs or broken section links.
+
+Keep existing heading IDs when revising the handbook so bookmarked links continue to work. Add new sections to the sidebar; headings and their text are included in search automatically. Put runnable examples in `pre[data-copyable]` and identify examples that depend on `dev/sample.sql`.
 
 ## Adding a FAQ question
 

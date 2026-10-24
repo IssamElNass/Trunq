@@ -22,6 +22,7 @@
   const OS_NAMES = { mac: "macOS", win: "Windows", deb: "Debian / Ubuntu", linux: "Linux" };
 
   $$("[data-mod]").forEach((k) => (k.textContent = MOD));
+  $$("[data-alt]").forEach((k) => (k.textContent = isMac ? "⌥" : "Alt"));
   if (isMac) $$("[data-mod-hint]").forEach((h) => (h.hidden = true));
   if (os) {
     $$("[data-os-label]").forEach((l) => (l.textContent = `Download for ${OS_NAMES[os]}`));
@@ -45,7 +46,7 @@
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    localStorage.setItem("trunq-theme", next);
+    try { localStorage.setItem("trunq-theme", next); } catch { /* Storage may be unavailable in private or embedded browsers. */ }
     labelThemeButtons();
   }
   $$("[data-theme-toggle]").forEach((b) => b.addEventListener("click", toggleTheme));
@@ -64,30 +65,39 @@
   $$(".tabs [role=tab]").forEach((t) => {
     t.addEventListener("click", () => selectTab(t));
     t.addEventListener("keydown", (e) => {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
       const tabs = $$("[role=tab]", t.parentElement);
-      const next = tabs[(tabs.indexOf(t) + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      const index = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (tabs.indexOf(t) + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+      const next = tabs[index];
       selectTab(next);
       next.focus();
     });
   });
 
-  // Every code block on the docs page gets a copy button; comment lines are left out.
+  // Copy exactly the displayed code, including comments and Unicode.
   $$("pre[data-copyable]").forEach((pre) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "copy";
     btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy code to clipboard");
+    btn.setAttribute("aria-live", "polite");
     pre.parentElement.classList.add("has-copy");
     pre.insertAdjacentElement("beforebegin", btn);
     btn.addEventListener("click", async () => {
-      const text = pre.innerText.split("\n").filter((l) => !/^\s*#(?!\!)/.test(l)).join("\n").trim();
+      const text = pre.textContent;
       try {
         await navigator.clipboard.writeText(text);
         btn.textContent = "Copied ✓";
         btn.classList.add("is-done");
       } catch {
-        btn.textContent = "Select & copy";
+        const range = document.createRange();
+        range.selectNodeContents(pre);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        btn.textContent = "Selected — copy manually";
       }
       setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("is-done"); }, 1800);
     });
@@ -110,8 +120,9 @@
   const goto = (href) => () => {
     const url = new URL(href, location.href);
     if (url.pathname === location.pathname && url.hash) {
-      const target = $(url.hash);
+      const target = document.getElementById(decodeURIComponent(url.hash.slice(1)));
       if (target) {
+        if (target.tagName === "DETAILS") target.open = true;
         target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
         history.replaceState(null, "", url.hash);
         return;
@@ -147,9 +158,10 @@
     })));
   } else {
     addCommands([
-      ["Install Trunq", "install"], ["Connect to your first database", "first-steps"],
+      ["Install Trunq", "install"], ["Nightly builds", "nightly-builds"], ["Connect to your first database", "first-steps"],
       ["Azure & Microsoft Entra ID", "azure"], ["Safety features", "safety"],
       ["ER diagrams & metadata", "relationships"], ["Docker & Docker Hub", "docker"], ["Performance checks", "performance"],
+      ["Settings", "settings"], ["Back up your workspace", "backup-restore"], ["TLS verification", "tls-modes"],
       ["Keyboard shortcuts", "shortcuts"], ["Troubleshooting", "troubleshooting"], ["Build from source", "build"],
     ].map(([label, id]) => ({ group: "Docs", label, icon: "book", action: goto(ROOT + "docs/#" + id) })));
   }
@@ -205,6 +217,7 @@
 
   function openPalette() {
     if (!pal.hidden) return;
+    if (!menu.hidden) setMenu(false);
     lastFocus = document.activeElement;
     pal.hidden = false;
     palInput.value = "";
@@ -235,9 +248,9 @@
     } else if (e.key === "Enter") {
       e.preventDefault();
       choose(active);
-    } else if (e.key === "Escape" || e.key === "Tab") {
-      e.preventDefault(); // Tab keeps focus inside the dialog
-      if (e.key === "Escape") closePalette();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closePalette();
     }
   });
   palList.addEventListener("mousemove", (e) => {
@@ -246,9 +259,21 @@
   });
   palList.addEventListener("click", (e) => { const li = e.target.closest("[data-i]"); if (li) choose(+li.dataset.i); });
   $$("[data-open-palette]").forEach((b) => b.addEventListener("click", openPalette));
-  $("[data-close-palette]").addEventListener("click", closePalette);
+  $$("[data-close-palette]").forEach((b) => b.addEventListener("click", closePalette));
 
   document.addEventListener("keydown", (e) => {
+    if (!pal.hidden && e.key === "Escape") {
+      e.preventDefault();
+      closePalette();
+      return;
+    }
+    if (!pal.hidden && e.key === "Tab") {
+      const focusable = $$("input, button", pal).filter((el) => !el.disabled);
+      const index = focusable.indexOf(document.activeElement);
+      e.preventDefault();
+      focusable[(index + (e.shiftKey ? focusable.length - 1 : 1)) % focusable.length].focus();
+      return;
+    }
     const mod = isMac ? e.metaKey : e.ctrlKey;
     if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
       e.preventDefault();

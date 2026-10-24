@@ -361,7 +361,7 @@ impl GridState {
             let empty = (0..n).filter(|&c| rows > 0 && (0..rows).all(|r| cell_value(g, r, c).is_none())).collect();
             self.empty_cols = (key, empty);
         }
-        self.dcols = (0..n).filter(|c| !self.hidden.contains(c) && !(self.hide_empty && self.empty_cols.1.contains(c))).collect();
+        self.dcols = (0..n).filter(|c| !(self.hidden.contains(c) || self.hide_empty && self.empty_cols.1.contains(c))).collect();
 
         if self.view_key == Some(key) {
             return;

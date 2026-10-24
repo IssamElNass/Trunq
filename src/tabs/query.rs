@@ -95,8 +95,8 @@ struct Running {
     fetch: bool,
     rows_total: u64,
     ok: bool,
-    /// Dry run: (used a savepoint instead of BEGIN)
-    dry: Option<bool>,
+    /// The actor rolls back before reporting RunFinished.
+    dry: bool,
     /// When the current statement started / delivered its first result.
     stmt_started: Instant,
     first_result: Option<Instant>,
@@ -116,8 +116,8 @@ pub struct TableMode {
     pub exact_count: Option<String>,
 }
 
-/// Statements awaiting `:name` values: (statements, explain mode, parameter names).
-type ParamsPrompt = (Vec<(String, usize)>, Option<bool>, Vec<String>);
+/// Statements awaiting `:name` values: (statements, explain mode, names, dry run).
+type ParamsPrompt = (Vec<(String, usize)>, Option<bool>, Vec<String>, bool);
 
 struct Confirm {
     stmts: Vec<(String, usize)>,
@@ -327,7 +327,7 @@ impl QueryTab {
             None => (None, text.len()),
         };
         let mut stmts: Vec<(String, usize)> = Vec::new();
-        if let Some(sel) = sel {
+        if !all && let Some(sel) = sel {
             let part = &text[sel.clone()];
             for s in lexer::split_statements(part) {
                 stmts.push((s.text(part).to_string(), sel.start + s.range.start));
@@ -365,7 +365,7 @@ impl QueryTab {
             }
         }
         if !names.is_empty() {
-            self.params_prompt = Some((stmts, explain, names));
+            self.params_prompt = Some((stmts, explain, names, false));
             return;
         }
         self.run_checked(ctx, ui, stmts, Vec::new(), explain);
@@ -409,13 +409,17 @@ impl QueryTab {
         if first != "merge" && !words.iter().any(|w| w == "returning") {
             body.push_str("\nRETURNING *");
         }
-        let in_tx = self.session.as_ref().is_some_and(|s| s.tx_status != TxStatus::Idle);
-        let (open, close) = if in_tx { ("SAVEPOINT trunq_dry_run", "ROLLBACK TO SAVEPOINT trunq_dry_run") } else { ("BEGIN", "ROLLBACK") };
-        let plan = vec![(open.to_string(), usize::MAX), (body, off), (close.to_string(), usize::MAX)];
-        self.start_run(ctx, ui, plan, None);
-        if let Some(r) = &mut self.run {
-            r.dry = Some(in_tx);
+        let mut names = Vec::new();
+        for (name, _) in lexer::find_params(&body) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
         }
+        if !names.is_empty() {
+            self.params_prompt = Some((vec![(body, off)], None, names, true));
+            return;
+        }
+        self.start_run_plan(ctx, ui, vec![(body, off)], Vec::new(), None, true);
         self.msg(MsgKind::Info, "Dry run: executing inside a transaction that will be rolled back…".into());
     }
 
@@ -423,20 +427,34 @@ impl QueryTab {
         self.start_run_params(ctx, ui, stmts, Vec::new(), explain);
     }
 
-    fn start_run_params(&mut self, ctx: &mut TabCtx, ui: &Ui, mut stmts: Vec<(String, usize)>, mut params: Vec<Vec<Option<String>>>, explain: Option<bool>) {
+    fn start_run_params(&mut self, ctx: &mut TabCtx, ui: &Ui, stmts: Vec<(String, usize)>, params: Vec<Vec<Option<String>>>, explain: Option<bool>) {
+        self.start_run_plan(ctx, ui, stmts, params, explain, false);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_run_plan(
+        &mut self,
+        ctx: &mut TabCtx,
+        ui: &Ui,
+        mut stmts: Vec<(String, usize)>,
+        mut params: Vec<Vec<Option<String>>>,
+        explain: Option<bool>,
+        dry: bool,
+    ) {
         if !self.ensure_session(ctx, ui) {
             return;
         }
         params.resize(stmts.len(), Vec::new());
         let session = self.session.as_mut().unwrap();
-        if !self.autocommit && session.tx_status == TxStatus::Idle && !lexer::split_statements(&stmts[0].0).is_empty() {
+        if !dry && !self.autocommit && session.tx_status == TxStatus::Idle && !lexer::split_statements(&stmts[0].0).is_empty() {
             let first = stmts[0].0.trim_start().to_ascii_lowercase();
             if !(first.starts_with("begin") || first.starts_with("start transaction")) {
                 stmts.insert(0, ("BEGIN".into(), usize::MAX));
                 params.insert(0, Vec::new());
             }
         }
-        let id = session.run_params(stmts.iter().map(|s| s.0.clone()).zip(params.iter().cloned()).collect(), ctx.settings.page_size);
+        let statements = stmts.iter().map(|s| s.0.clone()).zip(params.iter().cloned()).collect();
+        let id = if dry { session.dry_run_params(statements, ctx.settings.page_size) } else { session.run_params(statements, ctx.settings.page_size) };
         // pinned results survive a new run (their cursor is gone though)
         self.panes.retain(|p| p.pinned);
         for p in &mut self.panes {
@@ -455,7 +473,7 @@ impl QueryTab {
             fetch: false,
             rows_total: 0,
             ok: true,
-            dry: None,
+            dry,
             stmt_started: Instant::now(),
             first_result: None,
             params,
@@ -504,7 +522,7 @@ impl QueryTab {
             fetch: true,
             rows_total: 0,
             ok: true,
-            dry: None,
+            dry: false,
             stmt_started: Instant::now(),
             first_result: None,
             params: Vec::new(),
@@ -581,7 +599,7 @@ impl QueryTab {
                         .collect();
                     let explain = self.run.as_ref().and_then(|r| r.explain);
                     let n = self.panes.len() + 1;
-                    let dry = self.run.as_ref().is_some_and(|r| r.dry.is_some());
+                    let dry = self.run.as_ref().is_some_and(|r| r.dry);
                     let title = if explain.is_some() {
                         "Plan".to_string()
                     } else if dry {
@@ -685,14 +703,14 @@ impl QueryTab {
                         && self.table.is_none()
                     {
                         let byte_in_stmt = stmt.char_indices().nth(pos.saturating_sub(1)).map_or(stmt.len(), |x| x.0);
-                        let start = off + byte_in_stmt;
+                        let start = self.editor.text.floor_char_boundary((off + byte_in_stmt).min(self.editor.text.len()));
                         let end = start
                             + self.editor.text[start.min(self.editor.text.len())..]
                                 .find(|c: char| c.is_whitespace() || c == ',' || c == ')' || c == ';')
                                 .unwrap_or(1)
                                 .max(1);
                         if start <= self.editor.text.len() {
-                            self.editor.error = Some((start..end.min(self.editor.text.len()), error.message.clone()));
+                            self.editor.error = Some((start..self.editor.text.ceil_char_boundary(end.min(self.editor.text.len())), error.message.clone()));
                             let line = self.editor.text[..start].matches('\n').count() + 1;
                             text = format!("{text}\nat line {line}");
                         }
@@ -704,15 +722,8 @@ impl QueryTab {
                 }
                 Event::RunFinished { elapsed, .. } => {
                     if let Some(r) = self.run.as_ref()
-                        && let Some(savepoint) = r.dry
+                        && r.dry
                     {
-                        // Make sure nothing survives a dry run, even after an error.
-                        let tx = self.session.as_ref().map(|s| s.tx_status).unwrap_or(TxStatus::Idle);
-                        let needs = if savepoint { !r.ok } else { tx != TxStatus::Idle };
-                        if needs && let Some(s) = self.session.as_mut() {
-                            let undo = if savepoint { "ROLLBACK TO SAVEPOINT trunq_dry_run" } else { "ROLLBACK" };
-                            s.run(vec![undo.to_string()], 0);
-                        }
                         let affected = self.panes.last().and_then(|p| p.tag.clone()).unwrap_or_default();
                         if r.ok {
                             self.msg(
@@ -976,7 +987,7 @@ impl QueryTab {
         }
 
         // :name parameter prompt
-        if let Some((stmts, explain, names)) = self.params_prompt.take() {
+        if let Some((stmts, explain, names, dry)) = self.params_prompt.take() {
             let mut keep = true;
             let mut go = false;
             egui::Modal::new(egui::Id::unique(("params", self.uid))).frame(w::modal_frame()).show(ui.ctx(), |ui| {
@@ -1023,9 +1034,13 @@ impl QueryTab {
                     bound_stmts.push((rewritten, off));
                     bound_params.push(values);
                 }
-                self.run_checked(ctx, ui, bound_stmts, bound_params, explain);
+                if dry {
+                    self.start_run_plan(ctx, ui, bound_stmts, bound_params, None, true);
+                } else {
+                    self.run_checked(ctx, ui, bound_stmts, bound_params, explain);
+                }
             } else if keep {
-                self.params_prompt = Some((stmts, explain, names));
+                self.params_prompt = Some((stmts, explain, names, dry));
             }
         }
 
@@ -1100,17 +1115,13 @@ impl QueryTab {
             } else if dry {
                 let stmts = c.stmts;
                 if let Some((s, off)) = stmts.into_iter().next() {
-                    let in_tx = self.session.as_ref().is_some_and(|s| s.tx_status != TxStatus::Idle);
-                    let (open, close) = if in_tx { ("SAVEPOINT trunq_dry_run", "ROLLBACK TO SAVEPOINT trunq_dry_run") } else { ("BEGIN", "ROLLBACK") };
                     let body = if s.to_ascii_lowercase().contains("returning") || s.trim_start().to_ascii_lowercase().starts_with("merge") {
                         s
                     } else {
                         format!("{s}\nRETURNING *")
                     };
-                    self.start_run(ctx, ui, vec![(open.into(), usize::MAX), (body, off), (close.into(), usize::MAX)], None);
-                    if let Some(r) = &mut self.run {
-                        r.dry = Some(in_tx);
-                    }
+                    let params = vec![c.params.into_iter().next().unwrap_or_default()];
+                    self.start_run_plan(ctx, ui, vec![(body, off)], params, None, true);
                 }
             } else if keep {
                 self.confirm = Some(c);
@@ -1479,7 +1490,7 @@ impl QueryTab {
             self.ensure_session(ctx, ui);
             if let (Some(t), Some(s)) = (&mut self.table, &self.session) {
                 let sql = edits_sql(t, self.panes.first());
-                t.save = Some(s.batch(format!("BEGIN;\n{sql}\nCOMMIT;")));
+                t.save = Some(s.save_edits(sql));
             }
         }
         // SQL preview
@@ -1603,21 +1614,56 @@ fn result_name(sql: &str) -> Option<String> {
 /// Warns about statements that are probably mistakes.
 fn dangerous(stmts: &[(String, usize)]) -> Option<String> {
     for (s, _) in stmts {
-        let toks: Vec<String> = lexer::tokenize(s)
-            .into_iter()
-            .filter(|t| !matches!(t.kind, lexer::Tok::Whitespace | lexer::Tok::Comment))
-            .map(|t| s[t.range].to_ascii_lowercase())
-            .collect();
-        let first = toks.first().map(String::as_str).unwrap_or("");
-        let has_where = toks.iter().any(|t| t == "where");
-        if (first == "delete" || first == "update") && !has_where {
-            return Some(format!("This {} has no WHERE clause and will affect every row in the table.", first.to_uppercase()));
+        if let Some(warning) = dangerous_scope(s, &lexer::tokenize(s)) {
+            return Some(warning);
         }
-        if first == "drop" && toks.get(1).is_some_and(|t| t == "database" || t == "schema" || t == "table") {
-            return Some(format!("This will permanently DROP a {}.", toks[1].to_uppercase()));
+    }
+    None
+}
+
+fn dangerous_scope(sql: &str, tokens: &[lexer::Token]) -> Option<String> {
+    // Build query levels in one pass. An explicit stack also handles deeply
+    // nested expressions without recursive calls on user-provided SQL.
+    let mut scopes = vec![Vec::new()];
+    let mut stack = vec![0];
+    for token in tokens {
+        let text = &sql[token.range.clone()];
+        if token.kind == lexer::Tok::Punct && text == "(" {
+            stack.push(scopes.len());
+            scopes.push(Vec::new());
+        } else if token.kind == lexer::Tok::Punct && text == ")" {
+            if stack.len() > 1 {
+                stack.pop();
+            }
+        } else if token.kind == lexer::Tok::Keyword {
+            scopes[*stack.last().unwrap()].push(text.to_ascii_lowercase());
         }
-        if first == "truncate" {
-            return Some("TRUNCATE removes all rows from the table.".into());
+    }
+    for words in scopes {
+        let first = words.first().map(String::as_str).unwrap_or("");
+        // WITH and EXPLAIN precede the actual command. WHERE inside a CTE or
+        // subquery cannot restrict which rows the outer command modifies.
+        let command = if matches!(first, "with" | "explain") {
+            words.iter().position(|w| matches!(w.as_str(), "select" | "insert" | "update" | "delete" | "merge" | "values" | "table"))
+        } else {
+            Some(0)
+        };
+        if first == "explain" && !tokens.iter().any(|t| t.kind == lexer::Tok::Keyword && sql[t.range.clone()].eq_ignore_ascii_case("analyze")) {
+            return None;
+        }
+        if let Some(index) = command {
+            let command = words.get(index).map(String::as_str).unwrap_or("");
+            if matches!(command, "delete" | "update") && !words[index + 1..].iter().any(|w| w == "where") {
+                return Some(format!("This {} has no WHERE clause and may affect every row in the table.", command.to_uppercase()));
+            }
+            if command == "drop"
+                && let Some(kind) = words.get(index + 1).filter(|w| matches!(w.as_str(), "database" | "schema" | "table"))
+            {
+                return Some(format!("This will permanently DROP a {}.", kind.to_uppercase()));
+            }
+            if command == "truncate" {
+                return Some("TRUNCATE removes all rows from the table.".into());
+            }
         }
     }
     None
@@ -1682,10 +1728,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn run_whole_script_ignores_editor_selection() {
+        let ctx = egui::Context::default();
+        let tab = QueryTab::new(None, "", "SELECT 1; SELECT 2;".into(), 13.5);
+        let mut state = egui::text_edit::TextEditState::default();
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(8))));
+        state.store(&ctx, tab.editor.id.with("text"));
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            let selected = tab.collect_statements(ui, false);
+            assert_eq!(selected.iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), vec!["SELECT 1"]);
+            let all = tab.collect_statements(ui, true);
+            assert_eq!(all.iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), vec!["SELECT 1", "SELECT 2"]);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
     fn danger_detection() {
         assert!(dangerous(&[("delete from t".into(), 0)]).is_some());
         assert!(dangerous(&[("delete from t where id = 1".into(), 0)]).is_none());
         assert!(dangerous(&[("update t set a = 1 -- where".into(), 0)]).is_some());
         assert!(dangerous(&[("select 1".into(), 0)]).is_none());
+    }
+
+    #[test]
+    fn danger_detection_requires_where_on_the_modified_table() {
+        for sql in [
+            "UPDATE t SET v = (SELECT v FROM source WHERE id = 1)",
+            "DELETE FROM t USING (SELECT id FROM source WHERE active) s",
+            "UPDATE t SET \"where\" = 'where'",
+            "WITH ids AS (SELECT id FROM source WHERE active) DELETE FROM t",
+            "WITH ids AS (SELECT id FROM source WHERE active) UPDATE t SET v = 1",
+            "WITH gone AS (DELETE FROM t RETURNING *) SELECT * FROM gone",
+            "EXPLAIN ANALYZE DELETE FROM t",
+        ] {
+            assert!(dangerous(&[(sql.into(), 0)]).is_some(), "missing warning: {sql}");
+        }
+        for sql in [
+            "UPDATE t SET v = (SELECT v FROM source WHERE id = 1) WHERE id = 2",
+            "WITH ids AS (SELECT id FROM source) DELETE FROM t WHERE id IN (SELECT id FROM ids)",
+            "WITH gone AS (DELETE FROM t WHERE id = 1 RETURNING *) SELECT * FROM gone",
+            "SELECT 'update t' AS \"delete\" FROM t",
+        ] {
+            assert!(dangerous(&[(sql.into(), 0)]).is_none(), "unexpected warning: {sql}");
+        }
     }
 }

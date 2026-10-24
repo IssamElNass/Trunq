@@ -19,12 +19,17 @@ const TYPES: &[&str] = &["text", "integer", "bigint", "numeric", "double precisi
 
 /// Minimal RFC 4180 parser (quotes, doubled quotes, newlines in quotes).
 pub fn parse_csv(text: &str, delim: char, max_rows: usize) -> Vec<Vec<String>> {
+    if max_rows == 0 {
+        return Vec::new();
+    }
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut field = String::new();
     let mut quoted = false;
-    let mut chars = text.chars().peekable();
+    let mut started = false;
+    let mut chars = text.trim_start_matches('\u{feff}').chars().peekable();
     while let Some(c) = chars.next() {
+        started = true;
         if quoted {
             if c == '"' {
                 if chars.peek() == Some(&'"') {
@@ -45,6 +50,7 @@ pub fn parse_csv(text: &str, delim: char, max_rows: usize) -> Vec<Vec<String>> {
             '\n' => {
                 row.push(std::mem::take(&mut field));
                 rows.push(std::mem::take(&mut row));
+                started = false;
                 if rows.len() >= max_rows {
                     return rows;
                 }
@@ -52,7 +58,7 @@ pub fn parse_csv(text: &str, delim: char, max_rows: usize) -> Vec<Vec<String>> {
             c => field.push(c),
         }
     }
-    if !field.is_empty() || !row.is_empty() {
+    if started {
         row.push(field);
         rows.push(row);
     }
@@ -60,7 +66,29 @@ pub fn parse_csv(text: &str, delim: char, max_rows: usize) -> Vec<Vec<String>> {
 }
 
 pub fn detect_delimiter(first_line: &str) -> char {
-    [',', ';', '\t', '|'].into_iter().max_by_key(|d| first_line.matches(*d).count()).unwrap_or(',')
+    let candidates = [',', ';', '\t', '|'];
+    let mut counts = [0usize; 4];
+    let mut quoted = false;
+    let mut chars = first_line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            if quoted && chars.peek() == Some(&'"') {
+                chars.next();
+            } else {
+                quoted = !quoted;
+            }
+        } else if !quoted && let Some(index) = candidates.iter().position(|d| *d == c) {
+            counts[index] += 1;
+        }
+    }
+    // Keep comma as the default, including single-column files and ties.
+    let mut best = 0;
+    for i in 1..candidates.len() {
+        if counts[i] > counts[best] {
+            best = i;
+        }
+    }
+    candidates[best]
 }
 
 /// Infers a PostgreSQL type from sample values.
@@ -79,8 +107,9 @@ pub fn infer_type<'a>(values: impl Iterator<Item = &'a str>) -> &'static str {
         num &= v.parse::<f64>().is_ok_and(|f| f.is_finite()) && !(v.len() > 1 && v.starts_with('0') && !v.starts_with("0."));
         boolean &= matches!(v.to_ascii_lowercase().as_str(), "true" | "false" | "t" | "f" | "yes" | "no");
         date &= chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d").is_ok();
-        ts &=
-            chrono::NaiveDateTime::parse_from_str(v.trim_end_matches('Z').replace('T', " ").split(['+']).next().unwrap_or(""), "%Y-%m-%d %H:%M:%S%.f").is_ok();
+        ts &= chrono::DateTime::parse_from_rfc3339(v).is_ok()
+            || chrono::DateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S%.f%#z").is_ok()
+            || chrono::NaiveDateTime::parse_from_str(&v.replace('T', " "), "%Y-%m-%d %H:%M:%S%.f").is_ok();
         uuid &= v.len() == 36 && v.chars().enumerate().all(|(i, c)| if [8, 13, 18, 23].contains(&i) { c == '-' } else { c.is_ascii_hexdigit() });
         json &= (v.starts_with('{') || v.starts_with('[')) && serde_json::from_str::<serde_json::Value>(v).is_ok();
     }
@@ -246,14 +275,15 @@ impl ImportDialog {
             })
             .collect();
         // de-duplicate names
-        let mut seen = std::collections::HashMap::new();
+        let mut seen = std::collections::HashSet::new();
         for c in &mut self.cols {
-            let n = seen.entry(c.name.clone()).or_insert(0);
-            *n += 1;
-            if *n > 1 {
-                c.name = format!("{}_{}", c.name, n);
-                c.target = c.name.clone();
+            let base = c.name.clone();
+            let mut suffix = 2;
+            while !seen.insert(c.name.clone()) {
+                c.name = format!("{base}_{suffix}");
+                suffix += 1;
             }
+            c.target = c.name.clone();
         }
         self.preview = body.iter().take(8).cloned().collect();
     }
@@ -504,6 +534,33 @@ mod tests {
         assert_eq!(rows, vec![vec!["a", "b"], vec!["1", "x, \"y\"\nz"], vec!["2", ""]]);
         assert_eq!(detect_delimiter("a;b;c"), ';');
         assert_eq!(detect_delimiter("a\tb"), '\t');
+    }
+
+    #[test]
+    fn csv_empty_values_and_quoted_delimiters() {
+        assert_eq!(parse_csv("\"\"", ',', 100), vec![vec![""]]);
+        assert!(parse_csv("a,b\n1,2", ',', 0).is_empty());
+        assert_eq!(detect_delimiter("\"a;b;c\",value"), ',');
+        assert_eq!(detect_delimiter("\"a,b,c\";value"), ';');
+        assert_eq!(detect_delimiter("one_column"), ',');
+        assert_eq!(parse_csv("\u{feff}\"first,name\",id\nvalue,1", ',', 100)[0], vec!["first,name", "id"]);
+    }
+
+    #[test]
+    fn csv_headers_remain_unique_after_sanitizing() {
+        let path = std::env::temp_dir().join(format!("trunq-import-{}.csv", rand::random::<u64>()));
+        std::fs::write(&path, "Name,name,name_2,name\na,b,c,d\n").unwrap();
+        let dialog = ImportDialog::open(path.clone(), 1, "test".into()).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let names: std::collections::HashSet<_> = dialog.cols.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names.len(), 4);
+    }
+
+    #[test]
+    fn timestamp_inference_validates_the_timezone() {
+        assert_eq!(infer_type(["2026-10-24T10:00:00-04:00"].into_iter()), "timestamptz");
+        assert_eq!(infer_type(["2026-10-24 10:00:00+02:00"].into_iter()), "timestamptz");
+        assert_eq!(infer_type(["2026-10-24 10:00:00+invalid"].into_iter()), "text");
     }
 
     #[test]

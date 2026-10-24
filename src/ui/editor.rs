@@ -1,7 +1,6 @@
 //! The SQL editor: syntax highlighting, line numbers, current-statement
 //! highlight, error squiggles and a cursor-anchored completion popup.
 
-use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -51,6 +50,7 @@ impl EditorState {
         let c = start + with.len();
         self.pending_cursor = Some(c..c);
         self.error = None;
+        self.completion = None;
     }
 
     pub fn set_text(&mut self, text: String) {
@@ -59,6 +59,22 @@ impl EditorState {
         self.error = None;
         self.completion = None;
     }
+
+    fn accept_completion(&mut self, index: usize) -> bool {
+        let Some(completion) = self.completion.take() else { return false };
+        let Some(item) = completion.items.get(index) else { return false };
+        if self.text.get(completion.replace.clone()).is_none() {
+            return false;
+        }
+        let mut insert = item.insert.clone();
+        // Mouse and keyboard acceptance must both preserve an existing "(".
+        if insert.ends_with('(') && self.text[completion.replace.end..].starts_with('(') {
+            insert.pop();
+        }
+        self.replace_range(completion.replace, &insert);
+        self.request_focus = true;
+        true
+    }
 }
 
 fn char_to_byte(s: &str, ci: usize) -> usize {
@@ -66,14 +82,25 @@ fn char_to_byte(s: &str, ci: usize) -> usize {
 }
 
 fn byte_to_char(s: &str, b: usize) -> usize {
-    s[..b.min(s.len())].chars().count()
+    s[..s.floor_char_boundary(b.min(s.len()))].chars().count()
 }
 
-fn hash_str(s: &str, extra: u32) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    extra.hash(&mut h);
-    h.finish()
+#[derive(Default)]
+struct SqlHighlighter;
+
+impl egui::cache::ComputerMut<(&str, &FontId, bool), LayoutJob> for SqlHighlighter {
+    fn compute(&mut self, (text, font, _dark): (&str, &FontId, bool)) -> LayoutJob {
+        highlight(text, font)
+    }
+}
+
+fn highlighted_galley(ui: &Ui, text: &str, font: &FontId, wrap: f32) -> Arc<Galley> {
+    // Cache syntax, never glyph meshes: egui invalidates its font atlas when
+    // fonts/rendering options change or the atlas fills up. Old galleys then
+    // point at unrelated glyphs. FrameCache also evicts earlier edits.
+    let mut job = ui.ctx().memory_mut(|m| m.caches.cache::<egui::cache::FrameCache<LayoutJob, SqlHighlighter>>().get((text, font, theme::p().dark)).clone());
+    job.wrap.max_width = wrap;
+    ui.ctx().fonts_mut(|f| f.layout_job(job))
 }
 
 /// Builds a highlighted layout job for `text`.
@@ -135,7 +162,10 @@ pub fn sql_editor(
     let focused = ui.memory(|m| m.has_focus(text_id));
     let mut accept: Option<usize> = None;
     let mut force_complete = false;
-    if focused {
+    if readonly {
+        st.completion = None;
+    }
+    if focused && !readonly {
         if st.completion.is_some() {
             ui.input_mut(|i| {
                 let n = st.completion.as_ref().map_or(0, |c| c.items.len());
@@ -165,17 +195,7 @@ pub fn sql_editor(
     }
 
     // ---- accept a completion -------------------------------------------------
-    if let Some(idx) = accept
-        && let Some(c) = st.completion.take()
-        && let Some(item) = c.items.get(idx)
-    {
-        let mut insert = item.insert.clone();
-        // Avoid doubling "(" if one already follows.
-        if insert.ends_with('(') && st.text[c.replace.end.min(st.text.len())..].starts_with('(') {
-            insert.pop();
-        }
-        st.replace_range(c.replace.clone(), &insert);
-    }
+    let completion_changed = accept.take().is_some_and(|index| st.accept_completion(index));
 
     // Indent / outdent with Tab when no completion is open.
     let mut tab_action: Option<bool> = None;
@@ -200,21 +220,7 @@ pub fn sql_editor(
         state.store(ui.ctx(), text_id);
     }
 
-    let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| -> Arc<Galley> {
-        let text = buf.as_str();
-        let key = Id::unique(("hl", hash_str(text, if pal.dark { 1 } else { 2 }), font.size.to_bits()));
-        let cached = ui.ctx().memory(|m| m.data.get_temp::<Arc<Galley>>(key));
-        if let Some(g) = cached
-            && (g.job.wrap.max_width - wrap).abs() < 0.5
-        {
-            return g;
-        }
-        let mut job = highlight(text, &font);
-        job.wrap.max_width = wrap;
-        let g = ui.ctx().fonts_mut(|f| f.layout_job(job));
-        ui.ctx().memory_mut(|m| m.data.insert_temp(key, g.clone()));
-        g
-    };
+    let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| -> Arc<Galley> { highlighted_galley(ui, buf.as_str(), &font, wrap) };
 
     let mut out = EditorOutput::default();
     let gutter_digits = (st.text.matches('\n').count() + 1).to_string().len().max(3);
@@ -244,7 +250,7 @@ pub fn sql_editor(
             }
             let galley = output.galley.clone();
             let gpos = output.galley_pos;
-            out.changed = output.response.changed() && !readonly;
+            out.changed = completion_changed || output.response.changed() && !readonly;
             out.has_focus = output.response.has_focus();
             if st.request_focus {
                 output.response.request_focus();
@@ -347,7 +353,7 @@ pub fn sql_editor(
                 && ui.input(|i| {
                     i.events.iter().any(|e| matches!(e, egui::Event::Text(t) if t.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '"')))
                 });
-            if (typed && autocomplete) || force_complete {
+            if !readonly && ((typed && autocomplete) || force_complete) {
                 if let Some(c) = cursor_byte {
                     st.completion = complete::complete(&st.text, c, catalog, force_complete, upper_kw);
                     st.selected = 0;
@@ -370,12 +376,8 @@ pub fn sql_editor(
                     accept = Some(i);
                 }
             }
-            if let Some(i) = accept.take()
-                && let Some(c) = st.completion.take()
-                && let Some(item) = c.items.get(i)
-            {
-                st.replace_range(c.replace.clone(), &item.insert);
-                st.request_focus = true;
+            if let Some(i) = accept.take() {
+                out.changed |= st.accept_completion(i);
             }
         });
     });
@@ -413,6 +415,9 @@ pub fn sql_editor(
     }
     if out.changed {
         st.error = None;
+    }
+    if tab_action.is_some() || toggle_comment || duplicate_line {
+        st.completion = None;
     }
     out
 }
@@ -457,7 +462,7 @@ fn toggle_line_comment(text: &str, sel: Range<usize>) -> (String, Range<usize>) 
     let block = &text[lb.clone()];
     let lines: Vec<&str> = block.split('\n').collect();
     let all_commented = lines.iter().filter(|l| !l.trim().is_empty()).all(|l| l.trim_start().starts_with("--"));
-    let min_indent = lines.iter().filter(|l| !l.trim().is_empty()).map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
+    let min_indent = lines.iter().filter(|l| !l.trim().is_empty()).map(|l| l.chars().take_while(|c| c.is_whitespace()).count()).min().unwrap_or(0);
     let new_block: String = lines
         .iter()
         .map(|l| {
@@ -469,7 +474,8 @@ fn toggle_line_comment(text: &str, sel: Range<usize>) -> (String, Range<usize>) 
                 let rest = rest.strip_prefix(' ').unwrap_or(rest);
                 format!("{}{}", &l[..i], rest)
             } else {
-                format!("{}-- {}", &l[..min_indent], &l[min_indent..])
+                let indent_end = char_to_byte(l, min_indent);
+                format!("{}-- {}", &l[..indent_end], &l[indent_end..])
             }
         })
         .collect::<Vec<_>>()
@@ -539,11 +545,107 @@ mod tests {
     use super::*;
 
     #[test]
+    fn diagnostic_offsets_inside_unicode_characters_do_not_panic() {
+        let text = "é世界";
+        assert_eq!(byte_to_char(text, 1), 0);
+        assert_eq!(byte_to_char(text, 3), 1);
+        assert_eq!(byte_to_char(text, 7), 2);
+        assert_eq!(byte_to_char(text, usize::MAX), 3);
+    }
+
+    #[test]
+    fn highlighted_text_refreshes_after_font_changes() {
+        let ctx = egui::Context::default();
+        let text = "SELECT 'héllo 世界' AS greeting, 42;";
+        let font = theme::mono(13.5);
+        let mut before = None;
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            before = Some(highlighted_galley(ui, text, &font, 800.0));
+        });
+        output.textures_delta.clear();
+        theme::install_fonts(&ctx);
+        let mut actual = None;
+        let mut expected = None;
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            actual = Some(highlighted_galley(ui, text, &font, 800.0));
+            let mut job = highlight(text, &font);
+            job.wrap.max_width = 800.0;
+            expected = Some(ui.fonts_mut(|f| f.layout_job(job)));
+        });
+        output.textures_delta.clear();
+        assert!(!Arc::ptr_eq(before.as_ref().unwrap(), expected.as_ref().unwrap()));
+        assert!(Arc::ptr_eq(actual.as_ref().unwrap(), expected.as_ref().unwrap()), "editor reused glyphs from the old font atlas");
+    }
+
+    #[test]
     fn comment_toggle() {
         let (t, _) = toggle_line_comment("select 1\nfrom t", 0..12);
         assert_eq!(t, "-- select 1\n-- from t");
         let (t, _) = toggle_line_comment(&t, 0..5);
         assert_eq!(t, "select 1\n-- from t");
+    }
+
+    #[test]
+    fn comment_toggle_preserves_unicode_indentation() {
+        let sql = "\u{3000}SELECT 'café';\n  SELECT '世界';";
+        let (commented, _) = toggle_line_comment(sql, 0..sql.len());
+        assert_eq!(commented, "\u{3000}-- SELECT 'café';\n --  SELECT '世界';");
+        let (restored, _) = toggle_line_comment(&commented, 0..commented.len());
+        assert_eq!(restored, sql);
+    }
+
+    #[test]
+    fn function_completion_preserves_existing_parentheses() {
+        for (text, expected) in [("SELECT cou", "SELECT count("), ("SELECT cou()", "SELECT count()")] {
+            let mut state = EditorState::new(Id::unique("completion-test"), text.into());
+            let completion = complete::complete(text, "SELECT cou".len(), None, true, false).unwrap();
+            let index = completion.items.iter().position(|item| item.insert == "count(").unwrap();
+            state.completion = Some(completion);
+            assert!(state.accept_completion(index));
+            assert_eq!(state.text, expected);
+            assert!(state.completion.is_none());
+            assert!(state.request_focus);
+        }
+    }
+
+    #[test]
+    fn completion_is_discarded_after_external_replacement() {
+        let mut state = EditorState::new(Id::unique("replacement-completion"), "SELECT cou".into());
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        assert!(state.completion.is_some());
+        state.replace_range(0..state.text.len(), "SELECT 1");
+        assert!(state.completion.is_none());
+    }
+
+    #[test]
+    fn stale_completion_range_does_not_panic() {
+        let mut state = EditorState::new(Id::unique("stale-completion"), "SELECT cou".into());
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        state.text = "短".into();
+        assert!(!state.accept_completion(0));
+        assert_eq!(state.text, "短");
+    }
+
+    #[test]
+    fn comment_shortcut_closes_the_old_completion() {
+        let ctx = egui::Context::default();
+        theme::install_fonts(&ctx);
+        let mut state = EditorState::new(Id::unique("comment-completion"), "SELECT cou".into());
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            sql_editor(ui, &mut state, None, true, true, false, false);
+        });
+        output.textures_delta.clear();
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::ModifiersChanged(Modifiers::COMMAND));
+        input.events.push(egui::Event::Key { key: Key::Slash, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
+        let mut output = ctx.run_ui(input, |ui| {
+            ui.memory_mut(|memory| memory.request_focus(state.id.with("text")));
+            sql_editor(ui, &mut state, None, true, true, false, false);
+        });
+        output.textures_delta.clear();
+        assert_eq!(state.text, "-- SELECT cou");
+        assert!(state.completion.is_none());
     }
 
     #[test]

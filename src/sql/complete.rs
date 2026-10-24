@@ -249,9 +249,6 @@ pub fn complete(text: &str, cursor: usize, catalog: Option<&Catalog>, explicit: 
                         push(&mut items, a.clone(), a.clone(), Kind::Table, format!("alias of {}", r.name));
                     }
                 }
-                for f in lexer::BUILTIN_FUNCTIONS {
-                    push(&mut items, f.to_string(), format!("{f}("), Kind::Function, "built-in".into());
-                }
                 for f in cat.functions().filter(|f| cat.on_search_path(&f.schema)) {
                     push(&mut items, f.name.clone(), format!("{}(", quote_ident(&f.name)), Kind::Function, format!("({})", f.args));
                 }
@@ -270,6 +267,12 @@ pub fn complete(text: &str, cursor: usize, catalog: Option<&Catalog>, explicit: 
             for s in &cat.schemas {
                 push(&mut items, s.name.clone(), quote_ident(&s.name), Kind::Schema, "schema".into());
             }
+        }
+    }
+    // Built-ins do not require a connection or a loaded catalog.
+    if expect == Expect::Column {
+        for f in lexer::BUILTIN_FUNCTIONS {
+            push(&mut items, f.to_string(), format!("{f}("), Kind::Function, "built-in".into());
         }
     }
     if expect != Expect::Relation || word.len() >= 2 {

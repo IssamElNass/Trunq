@@ -52,7 +52,8 @@ impl Format {
 }
 
 fn csv_field(out: &mut String, v: &str, sep: char) {
-    if v.contains(sep) || v.contains('"') || v.contains('\n') || v.contains('\r') {
+    // PostgreSQL COPY CSV distinguishes quoted empty text from unquoted NULL.
+    if v.is_empty() || v.contains(sep) || v.contains('"') || v.contains('\n') || v.contains('\r') {
         out.push('"');
         out.push_str(&v.replace('"', "\"\""));
         out.push('"');
@@ -84,7 +85,7 @@ fn sql_value(v: Option<&str>, cat: Cat) -> String {
     match v {
         None => "NULL".into(),
         Some(v) => match cat {
-            Cat::Number if v.parse::<f64>().is_ok() => v.to_string(),
+            Cat::Number if v.parse::<f64>().is_ok() && !matches!(v, "NaN" | "Infinity" | "-Infinity") => v.to_string(),
             Cat::Bool => {
                 if v == "t" {
                     "true".into()
@@ -252,6 +253,8 @@ pub fn format_with_pk(rs: &ResultSet, rows: &[usize], cols: &[usize], cats: &[Ca
 /// need only one chunk in memory.
 pub struct StreamWriter {
     w: std::io::BufWriter<std::fs::File>,
+    path: std::path::PathBuf,
+    temporary: std::path::PathBuf,
     fmt: Format,
     table: String,
     started: bool,
@@ -260,8 +263,22 @@ pub struct StreamWriter {
 
 impl StreamWriter {
     pub fn create(path: &std::path::Path, fmt: Format, table: &str) -> std::io::Result<StreamWriter> {
-        let f = std::fs::File::create(path)?;
-        Ok(StreamWriter { w: std::io::BufWriter::with_capacity(1 << 20, f), fmt, table: table.to_string(), started: false, rows: 0 })
+        // Stage beside the destination so publishing is a rename on the same
+        // filesystem. Errors and cancellation must preserve an earlier export.
+        if path.file_name().is_none() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "export path must name a file"));
+        }
+        let temporary = path.with_file_name(format!(".trunq-export-{:016x}.tmp", rand::random::<u64>()));
+        let f = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        Ok(StreamWriter {
+            w: std::io::BufWriter::with_capacity(1 << 20, f),
+            path: path.to_path_buf(),
+            temporary,
+            fmt,
+            table: table.to_string(),
+            started: false,
+            rows: 0,
+        })
     }
 
     pub fn rows(&self) -> u64 {
@@ -307,12 +324,21 @@ impl StreamWriter {
             self.write(rs, &[], cats)?;
         }
         match self.fmt {
+            Format::Json if !self.started => self.w.write_all(b"[\n]\n")?,
             Format::Json => self.w.write_all(if self.rows > 0 { b"\n]\n" } else { b"]\n" })?,
+            Format::TypeScript if !self.started => self.w.write_all(b"const rows = [\n];\n")?,
             Format::TypeScript => self.w.write_all(b"];\n")?,
             _ => {}
         }
         self.w.flush()?;
+        std::fs::rename(&self.temporary, &self.path)?;
         Ok(self.rows)
+    }
+}
+
+impl Drop for StreamWriter {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.temporary);
     }
 }
 
@@ -358,6 +384,43 @@ mod tests {
     }
 
     #[test]
+    fn csv_distinguishes_empty_text_from_null() {
+        let mut rs = ResultSet::new(vec![Column::text("value")]);
+        rs.push_text_row(&[Some("")]);
+        rs.push_text_row(&[None]);
+        rs.push_text_row(&[Some("NULL")]);
+        assert_eq!(format(&rs, &[0, 1, 2], &[0], &[Cat::String], Format::Csv, true, ""), "value\n\"\"\n\nNULL\n");
+    }
+
+    #[test]
+    fn sql_quotes_nonfinite_numbers() {
+        let mut rs = ResultSet::new(vec![Column::text("value")]);
+        for value in ["NaN", "Infinity", "-Infinity", "1e1000", "42.5"] {
+            rs.push_text_row(&[Some(value)]);
+        }
+        assert_eq!(
+            format(&rs, &[0, 1, 2, 3, 4], &[0], &[Cat::Number], Format::Insert, false, "t"),
+            "INSERT INTO t (value) VALUES ('NaN');\nINSERT INTO t (value) VALUES ('Infinity');\nINSERT INTO t (value) VALUES ('-Infinity');\nINSERT INTO t (value) VALUES (1e1000);\nINSERT INTO t (value) VALUES (42.5);\n"
+        );
+    }
+
+    #[test]
+    fn unfinished_export_preserves_existing_destination() {
+        let path = std::env::temp_dir().join(format!("trunq-export-preserve-{}.csv", rand::random::<u64>()));
+        std::fs::write(&path, "original contents").unwrap();
+        {
+            let mut writer = StreamWriter::create(&path, Format::Csv, "").unwrap();
+            writer.write(&sample(), &[0], &[Cat::Number, Cat::String]).unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "original contents");
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original contents");
+        let rs = sample();
+        assert_eq!(write_file(&path, &rs, &[0, 1], &[Cat::Number, Cat::String], Format::Csv, "").unwrap(), 2);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "id,name\n1,\"a,\"\"b\"\"\"\n2,\n");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn file_json_valid() {
         let rs = sample();
         let p = std::env::temp_dir().join("trunq_export_test.json");
@@ -372,5 +435,15 @@ mod tests {
         let p = std::env::temp_dir().join("trunq_export_test.csv");
         assert_eq!(write_file(&p, &rs, &[0, 1], &cats, Format::Csv, "").unwrap(), 2);
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "id,name\n1,\"a,\"\"b\"\"\"\n2,\n");
+    }
+
+    #[test]
+    fn empty_stream_exports_are_complete_documents() {
+        for (fmt, expected) in [(Format::Json, "[\n]\n"), (Format::TypeScript, "const rows = [\n];\n")] {
+            let path = std::env::temp_dir().join(format!("trunq-empty-export-{}.{}", rand::random::<u64>(), fmt.extension()));
+            assert_eq!(StreamWriter::create(&path, fmt, "").unwrap().finish(None, &[]).unwrap(), 0);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+            std::fs::remove_file(path).unwrap();
+        }
     }
 }

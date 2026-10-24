@@ -99,13 +99,13 @@ pub type QueryResult = Result<ResultSet, String>;
 pub enum Cmd {
     /// Run statements in order (stops at the first error).
     /// Each statement has its own bound parameters (`$1`, `$2`, … as text).
-    Run { id: u64, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize },
+    Run { id: u64, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize, rollback: bool },
     /// Fetch more rows from the open cursor; `rows == 0` fetches everything.
     FetchMore { id: u64, rows: usize },
     /// Run one parameterised statement to completion.
     Query { sql: String, params: Vec<Option<String>>, reply: Promise<QueryResult> },
     /// Run SQL through the simple protocol (multiple statements allowed).
-    Batch { sql: String, reply: Promise<Result<Vec<ResultSet>, String>> },
+    Batch { sql: String, atomic: bool, reply: Promise<Result<Vec<ResultSet>, String>> },
     /// Re-runs `sql` and streams every row to a file (export the entire result).
     Export {
         sql: String,
@@ -391,15 +391,19 @@ impl Session {
         self.failed.is_none()
     }
 
-    pub fn run(&mut self, statements: Vec<String>, page_size: usize) -> u64 {
-        self.run_params(statements.into_iter().map(|s| (s, Vec::new())).collect(), page_size)
-    }
-
     /// Runs statements with bound parameters (never string-interpolated).
     pub fn run_params(&mut self, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize) -> u64 {
+        self.run_with_mode(statements, page_size, false)
+    }
+
+    pub fn dry_run_params(&mut self, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize) -> u64 {
+        self.run_with_mode(statements, page_size, true)
+    }
+
+    fn run_with_mode(&mut self, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize, rollback: bool) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        let _ = self.tx.send(Cmd::Run { id, statements, page_size });
+        let _ = self.tx.send(Cmd::Run { id, statements, page_size, rollback });
         id
     }
 
@@ -450,7 +454,15 @@ impl Session {
 
     pub fn batch(&self, sql: impl Into<String>) -> Promise<Result<Vec<ResultSet>, String>> {
         let reply = Promise::new();
-        let _ = self.tx.send(Cmd::Batch { sql: sql.into(), reply: reply.clone() });
+        let _ = self.tx.send(Cmd::Batch { sql: sql.into(), atomic: false, reply: reply.clone() });
+        reply
+    }
+
+    /// Saves generated table edits together, recovering from statement errors
+    /// without leaving locks or rolling back an existing user transaction.
+    pub fn save_edits(&self, sql: String) -> Promise<Result<Vec<ResultSet>, String>> {
+        let reply = Promise::new();
+        let _ = self.tx.send(Cmd::Batch { sql, atomic: true, reply: reply.clone() });
         reply
     }
 
@@ -464,47 +476,109 @@ impl Session {
     }
 }
 
+async fn atomic_batch(conn: &mut PgConn, sql: &str) -> anyhow::Result<Vec<ResultSet>> {
+    // A suspended cursor also reports InTransaction. Close it first to tell
+    // that implicit transaction apart from an explicit user transaction.
+    conn.close_portal().await?;
+    let (begin, commit, rollback) = if conn.tx_status == TxStatus::Idle {
+        ("BEGIN", "COMMIT", "ROLLBACK")
+    } else {
+        ("SAVEPOINT trunq_table_save", "RELEASE SAVEPOINT trunq_table_save", "ROLLBACK TO SAVEPOINT trunq_table_save; RELEASE SAVEPOINT trunq_table_save")
+    };
+    conn.simple_query(begin).await?;
+    let result = async {
+        let rows = conn.simple_query(sql).await?;
+        conn.simple_query(commit).await?;
+        Ok(rows)
+    }
+    .await;
+    if result.is_err() {
+        conn.simple_query(rollback).await?;
+    }
+    result
+}
+
+async fn run_statements(
+    conn: &mut PgConn,
+    id: u64,
+    statements: Vec<(String, Vec<Option<String>>)>,
+    page_size: usize,
+    keep_cursor: bool,
+    send: &impl Fn(Event),
+) -> anyhow::Result<()> {
+    let n = statements.len();
+    for (index, (sql, params)) in statements.into_iter().enumerate() {
+        let is_last = index + 1 == n;
+        send(Event::StmtStart { id, index });
+        let t0 = Instant::now();
+        let (cols, res) = conn.start(&sql, &params, page_size).await?;
+        let has_columns = cols.is_some();
+        if let Some(cols) = cols {
+            send(Event::Columns { id, index, columns: cols, elapsed: t0.elapsed() });
+        }
+        match res {
+            Ok((rows, outcome)) => {
+                // COPY TO STDOUT supplies its columns while reading rows.
+                if !has_columns && !rows.columns.is_empty() {
+                    send(Event::Columns { id, index, columns: rows.columns.as_ref().clone(), elapsed: t0.elapsed() });
+                }
+                if !rows.is_empty() {
+                    send(Event::Rows { id, index, rows });
+                }
+                let (tag, more) = match outcome {
+                    StepOutcome::Done { tag } => (Some(tag), false),
+                    StepOutcome::Empty => (None, false),
+                    StepOutcome::Suspended => (None, true),
+                };
+                if more && (!is_last || !keep_cursor) {
+                    conn.close_portal().await?;
+                }
+                send(Event::StmtDone { id, index, tag, more: more && is_last && keep_cursor, elapsed: t0.elapsed() });
+            }
+            Err(error) => {
+                send(Event::StmtError { id, index, error });
+                break;
+            }
+        }
+        if !conn.notices.is_empty() {
+            send(Event::Notices(std::mem::take(&mut conn.notices)));
+        }
+    }
+    Ok(())
+}
+
 async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::Result<()> {
     match cmd {
-        Cmd::Run { id, statements, page_size } => {
+        Cmd::Run { id, statements, page_size, rollback } => {
             let started = Instant::now();
-            let n = statements.len();
-            for (index, (sql, params)) in statements.into_iter().enumerate() {
-                let is_last = index + 1 == n;
-                send(Event::StmtStart { id, index });
-                let t0 = Instant::now();
-                let (cols, res) = conn.start(&sql, &params, page_size).await?;
-                let has_columns = cols.is_some();
-                if let Some(cols) = cols {
-                    send(Event::Columns { id, index, columns: cols, elapsed: t0.elapsed() });
+            if rollback {
+                let result: anyhow::Result<()> = async {
+                    conn.close_portal().await?;
+                    let in_tx = conn.tx_status != TxStatus::Idle;
+                    let (begin, undo) = if in_tx {
+                        ("SAVEPOINT trunq_dry_run", "ROLLBACK TO SAVEPOINT trunq_dry_run; RELEASE SAVEPOINT trunq_dry_run")
+                    } else {
+                        ("BEGIN", "ROLLBACK")
+                    };
+                    conn.simple_query(begin).await?;
+                    let result = run_statements(conn, id, statements, page_size, false, send).await;
+                    // Roll back in the actor, even if the UI closes or the
+                    // statement fails. A cleanup failure closes the connection.
+                    let cleanup = conn.simple_query(undo).await;
+                    result?;
+                    cleanup.map_err(|e| anyhow::anyhow!("dry run rollback failed: {e:#}"))?;
+                    Ok(())
                 }
-                match res {
-                    Ok((rows, outcome)) => {
-                        // COPY TO STDOUT supplies its columns while reading rows.
-                        if !has_columns && !rows.columns.is_empty() {
-                            send(Event::Columns { id, index, columns: rows.columns.as_ref().clone(), elapsed: t0.elapsed() });
-                        }
-                        if !rows.is_empty() {
-                            send(Event::Rows { id, index, rows });
-                        }
-                        let (tag, more) = match outcome {
-                            StepOutcome::Done { tag } => (Some(tag), false),
-                            StepOutcome::Empty => (None, false),
-                            StepOutcome::Suspended => (None, true),
-                        };
-                        if more && !is_last {
-                            conn.close_portal().await?;
-                        }
-                        send(Event::StmtDone { id, index, tag, more: more && is_last, elapsed: t0.elapsed() });
-                    }
-                    Err(error) => {
-                        send(Event::StmtError { id, index, error });
-                        break;
+                .await;
+                if let Err(error) = result {
+                    if let Some(error) = error.downcast_ref::<DbError>() {
+                        send(Event::StmtError { id, index: 0, error: error.clone() });
+                    } else {
+                        return Err(error);
                     }
                 }
-                if !conn.notices.is_empty() {
-                    send(Event::Notices(std::mem::take(&mut conn.notices)));
-                }
+            } else {
+                run_statements(conn, id, statements, page_size, true, send).await?;
             }
             send(Event::RunFinished { id, elapsed: started.elapsed() });
         }
@@ -593,7 +667,6 @@ async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::R
             match result {
                 Ok(n) => reply.set(Ok(n)),
                 Err(e) => {
-                    let _ = std::fs::remove_file(&path);
                     reply.set(Err(format!("{e:#}")));
                 }
             }
@@ -622,7 +695,7 @@ async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::R
                 }
             }
         }
-        Cmd::Batch { sql, reply } => match conn.simple_query(&sql).await {
+        Cmd::Batch { sql, atomic, reply } => match if atomic { atomic_batch(conn, &sql).await } else { conn.simple_query(&sql).await } {
             Ok(rs) => reply.set(Ok(rs)),
             Err(e) => {
                 let fatal = e.downcast_ref::<DbError>().is_none();
@@ -634,4 +707,147 @@ async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::R
         },
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    fn connection_params() -> Option<super::super::wire::ConnectParams> {
+        let url = std::env::var("TRUNQ_TEST_DATABASE_URL").ok()?;
+        let (profile, password) = Profile::from_url(&url).expect("valid test database URL");
+        let mut params = profile.connect_params("", password.as_deref()).unwrap();
+        params.password = password;
+        Some(params)
+    }
+
+    #[test]
+    fn table_saves_recover_and_preserve_user_transactions() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            conn.simple_query("CREATE TEMP TABLE edits (id int PRIMARY KEY, value int CHECK (value > 0)); INSERT INTO edits VALUES (1, 10)").await.unwrap();
+            // Table browsing leaves a paged portal open before Save is clicked.
+            conn.start("SELECT * FROM edits", &[], 1).await.unwrap().1.unwrap();
+            let reply = Promise::new();
+            handle(
+                &mut conn,
+                Cmd::Batch { sql: "UPDATE edits SET value = 20; INSERT INTO edits VALUES (1, 30)".into(), atomic: true, reply: reply.clone() },
+                &|_| {},
+            )
+            .await
+            .unwrap();
+            assert!(reply.take().unwrap().is_err());
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+            assert_eq!(conn.query_params("SELECT value FROM edits", &[]).await.unwrap().get(0, 0), Some("10"));
+            atomic_batch(&mut conn, "UPDATE edits SET value = 30").await.unwrap();
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+
+            conn.simple_query("BEGIN; INSERT INTO edits VALUES (2, 40)").await.unwrap();
+            assert!(atomic_batch(&mut conn, "UPDATE edits SET value = 50 WHERE id = 1; INSERT INTO edits VALUES (3, -1)").await.is_err());
+            assert_eq!(conn.tx_status, TxStatus::InTransaction);
+            let rs = conn.query_params("SELECT value FROM edits ORDER BY id", &[]).await.unwrap();
+            assert_eq!(rs.get(0, 0), Some("30"));
+            assert_eq!(rs.get(1, 0), Some("40"));
+            atomic_batch(&mut conn, "UPDATE edits SET value = 60 WHERE id = 1").await.unwrap();
+            assert_eq!(conn.tx_status, TxStatus::InTransaction);
+            conn.simple_query("ROLLBACK").await.unwrap();
+            let rs = conn.query_params("SELECT value FROM edits ORDER BY id", &[]).await.unwrap();
+            assert_eq!(rs.nrows(), 1);
+            assert_eq!(rs.get(0, 0), Some("30"));
+            conn.simple_query("CREATE TEMP TABLE deferred_edits (id int UNIQUE DEFERRABLE INITIALLY DEFERRED)").await.unwrap();
+            assert!(atomic_batch(&mut conn, "INSERT INTO deferred_edits VALUES (1), (1)").await.is_err());
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+            assert_eq!(conn.query_params("SELECT count(*) FROM deferred_edits", &[]).await.unwrap().get(0, 0), Some("0"));
+        });
+    }
+
+    #[test]
+    fn dry_runs_after_paged_results_roll_back_before_finishing() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            conn.simple_query("CREATE TEMP TABLE dry_edits (id int PRIMARY KEY, value int CHECK (value > 0)); INSERT INTO dry_edits VALUES (1, 10)")
+                .await
+                .unwrap();
+            for explicit_transaction in [false, true] {
+                if explicit_transaction {
+                    conn.simple_query("BEGIN; INSERT INTO dry_edits VALUES (2, 40)").await.unwrap();
+                }
+                conn.start("SELECT g FROM generate_series(1, 3) g", &[], 1).await.unwrap().1.unwrap();
+                let events = Mutex::new(Vec::new());
+                handle(
+                    &mut conn,
+                    Cmd::Run {
+                        id: 1,
+                        statements: vec![("UPDATE dry_edits SET value = $1::int RETURNING *".into(), vec![Some("20".into())])],
+                        page_size: 1,
+                        rollback: true,
+                    },
+                    &|event| events.lock().push(event),
+                )
+                .await
+                .unwrap();
+                assert!(events.lock().iter().all(|event| !matches!(event, Event::StmtError { .. } | Event::StmtDone { more: true, .. })));
+                assert!(matches!(events.lock().last(), Some(Event::RunFinished { .. })));
+                let expected_tx = if explicit_transaction { TxStatus::InTransaction } else { TxStatus::Idle };
+                assert_eq!(conn.tx_status, expected_tx);
+                assert!(!conn.portal_open());
+                assert_eq!(conn.query_params("SELECT value FROM dry_edits WHERE id = 1", &[]).await.unwrap().get(0, 0), Some("10"));
+
+                events.lock().clear();
+                handle(
+                    &mut conn,
+                    Cmd::Run { id: 2, statements: vec![("UPDATE dry_edits SET value = -1 RETURNING *".into(), vec![])], page_size: 1, rollback: true },
+                    &|event| events.lock().push(event),
+                )
+                .await
+                .unwrap();
+                assert!(events.lock().iter().any(|event| matches!(event, Event::StmtError { .. })));
+                assert_eq!(conn.tx_status, expected_tx);
+                if explicit_transaction {
+                    assert_eq!(conn.query_params("SELECT value FROM dry_edits WHERE id = 2", &[]).await.unwrap().get(0, 0), Some("40"));
+                    conn.simple_query("ROLLBACK").await.unwrap();
+                }
+                assert_eq!(conn.query_params("SELECT count(*) FROM dry_edits", &[]).await.unwrap().get(0, 0), Some("1"));
+            }
+        });
+    }
+
+    #[test]
+    fn failed_or_cancelled_server_export_preserves_existing_file() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            let directory = std::env::temp_dir().join(format!("trunq-failed-export-{}", rand::random::<u64>()));
+            std::fs::create_dir(&directory).unwrap();
+            let path = directory.join("export.csv");
+            std::fs::write(&path, "earlier export").unwrap();
+            for (sql, cancelled) in [("SELECT 1/0", false), ("SELECT g FROM generate_series(1, 25000) g", true)] {
+                let reply = Promise::new();
+                handle(
+                    &mut conn,
+                    Cmd::Export {
+                        sql: sql.into(),
+                        params: vec![],
+                        path: path.clone(),
+                        format: crate::export::Format::Csv,
+                        cats: vec![],
+                        table: String::new(),
+                        progress: Arc::new(AtomicU64::new(0)),
+                        cancel: Arc::new(AtomicBool::new(cancelled)),
+                        reply: reply.clone(),
+                    },
+                    &|_| {},
+                )
+                .await
+                .unwrap();
+                assert!(reply.take().unwrap().is_err());
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), "earlier export");
+                assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1, "temporary export was not removed");
+                assert_eq!(conn.tx_status, TxStatus::Idle);
+            }
+            std::fs::remove_dir_all(directory).unwrap();
+        });
+    }
 }
