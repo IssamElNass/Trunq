@@ -850,6 +850,42 @@ mod live_tests {
     }
 
     #[test]
+    fn exported_csv_and_special_numbers_round_trip() {
+        let Some(p) = params() else { return };
+        rt().block_on(async {
+            use crate::db::types::Cat;
+            use crate::export::{self, Format};
+            let mut c = PgConn::connect(&p).await.unwrap();
+            let rs = c.query_params("SELECT v FROM (VALUES (NULL::text), (''), ('NULL'), ('a,b'), ('héllo')) values_to_export(v)", &[]).await.unwrap();
+            let rows: Vec<_> = rs.rows().collect();
+            let csv = export::format(&rs, &rows, &[0], &[Cat::String], Format::Csv, true, "");
+            c.simple_query("CREATE TEMP TABLE csv_round_trip (v text)").await.unwrap();
+            c.copy_in("COPY csv_round_trip FROM STDIN WITH (FORMAT csv, HEADER true)", csv.as_bytes(), &AtomicU64::new(0), &AtomicBool::new(false))
+                .await
+                .unwrap();
+            let restored = c.query_params("SELECT v FROM csv_round_trip", &[]).await.unwrap();
+            assert_eq!(restored.nrows(), rs.nrows());
+            for row in rs.rows() {
+                assert_eq!(restored.get(row, 0), rs.get(row, 0));
+            }
+            // float8 supports infinities throughout the PostgreSQL 13–18 matrix.
+            let rs = c
+                .query_params("SELECT v FROM (VALUES ('NaN'::float8), ('Infinity'::float8), ('-Infinity'::float8), (42.5::float8)) special_values(v)", &[])
+                .await
+                .unwrap();
+            let rows: Vec<_> = rs.rows().collect();
+            let sql = export::format(&rs, &rows, &[0], &[Cat::Number], Format::Insert, false, "numeric_round_trip");
+            c.simple_query("CREATE TEMP TABLE numeric_round_trip (v double precision)").await.unwrap();
+            c.simple_query(&sql).await.unwrap();
+            let restored = c.query_params("SELECT v FROM numeric_round_trip", &[]).await.unwrap();
+            assert_eq!(restored.nrows(), rs.nrows());
+            for row in rs.rows() {
+                assert_eq!(restored.get(row, 0), rs.get(row, 0));
+            }
+        });
+    }
+
+    #[test]
     fn catalog_and_table_details() {
         let Some(p) = params() else { return };
         rt().block_on(async {
