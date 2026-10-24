@@ -118,7 +118,7 @@ Enable **SSH tunnel** in the connection dialog. The database host is resolved fr
 
 Choose **Microsoft Entra ID** authentication and the matching Azure cloud. Browser, device-code, Azure CLI and service-principal sign-in are supported. Token commands add AWS RDS IAM, Google Cloud SQL IAM and custom brokers; PEM CA/client certificates are configurable. [Cloud-neutral setup](docs/cloud-authentication.md).
 
-Right-click a database → **Database tools** for extension inventory/install/update SQL, pg_cron job templates, audit/security inspections and replication/foreign-server inventories. [Administration guide and current limits](docs/administration.md).
+Right-click a database → **Manage extensions…** to search, choose a version/schema and enable or update extensions. [Extension quick start](docs/extensions.md). **Database tools** adds pg_cron job templates, audit/security inspections and replication/foreign-server inventories. [Administration guide and current limits](docs/administration.md).
 
 ## Keyboard shortcuts
 

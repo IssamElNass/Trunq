@@ -2,11 +2,15 @@
 
 [Documentation](README.md) · [Cloud authentication](cloud-authentication.md) · [PostgreSQL research](postgresql-research.md)
 
-Right-click a database in the browser and open **Database tools**. The tools open editable SQL in a new tab; select the correct environment and run it when ready. Expanding the object tree does not install software, schedule jobs, change logging or restart a server. After an extension change, use **Refresh schema** to update browsing and completion.
+For a searchable catalog and direct enable/update buttons, right-click a database → **Manage extensions…**; follow the [extension quick start](extensions.md).
+
+For SQL inspections, job templates and auditing, right-click a database and open **Database tools**. The tools open editable SQL in a new tab; select the correct environment and run it when ready. Expanding the object tree does not install software, schedule jobs, change logging or restart a server. After an extension change, use **Refresh schema** to update browsing and completion.
 
 The database tree now includes installed **Extensions**, **Event triggers** and **Publications**. An installed extension's context menu opens available versions/requirements, an update template or the full inventory. Schema **Types** participate in sidebar search, including when `public` contains types but no tables/functions.
 
-## Extension workflow
+## SQL extension inventory
+
+The extension manager handles version/schema/dependency choices and direct execution. These additional SQL tools support inspection and custom scripts:
 
 1. Open **Extensions · available and installed**. It shows default/installed versions, schema, owner, trusted/superuser flags, dependencies and a `review_sql` column.
 2. Open **Extension and scheduler prerequisites** to inspect CREATE privilege, recovery state, preload libraries, restart requirements and visible scheduler settings.
@@ -14,7 +18,7 @@ The database tree now includes installed **Extensions**, **Event triggers** and 
 4. Copy the generated `CREATE EXTENSION` SQL into a query tab, review the target database/schema and run it with an appropriate role.
 5. Refresh schema. For upgrades, inspect available versions and the extension's upgrade notes first; the generated `ALTER EXTENSION … UPDATE` selects the server's default target, not a promise that every upgrade path is supported.
 
-Extension names are quoted as identifiers in generated SQL. No `CASCADE` is added automatically. The client does not download extension binaries to database servers. Most extension SQL objects live per database, even when their library/preload configuration applies to an entire instance. For trusted extensions PostgreSQL can allow installation with database CREATE privilege; other extensions or managed providers impose stronger requirements. See [CREATE EXTENSION](https://www.postgresql.org/docs/18/sql-createextension.html).
+Extension names are quoted as identifiers in generated SQL. No `CASCADE` is added automatically. The manager executes the displayed CREATE/ALTER statement when you click its apply button; it does not download extension binaries to database servers. Most extension SQL objects live per database, even when their library/preload configuration applies to an entire instance. For trusted extensions PostgreSQL can allow installation with database CREATE privilege; other extensions or managed providers impose stronger requirements. See [CREATE EXTENSION](https://www.postgresql.org/docs/18/sql-createextension.html).
 
 ## Provider setup differs
 
@@ -97,7 +101,7 @@ Keep database events separate from cloud control-plane events (for example chang
 |---|---|---|
 | Types, domains, enums, ranges, composites | Schema tree, details and sidebar search; server text representation in results | Dedicated type creation/alteration forms and complete type DDL extraction |
 | Roles and tablespaces | Server tree, attributes/membership and copyable role DDL | Full privilege editor, ownership/dependency migration and tablespace creation wizard |
-| Extensions | Installed tree, available-version/dependency inventory, reviewed create/update SQL | Automatic provider flag changes, binary installation and restart orchestration |
+| Extensions | Searchable manager, version/schema/dependency choices, direct enable/update, installed tree and SQL inventory | Automatic provider flag changes, binary installation and restart orchestration |
 | Event triggers and publications | Database tree from the existing metadata snapshot | Full editing forms and publication table/row-filter details |
 | Foreign data wrappers/servers | On-demand names/owners/table inventory | Secret-aware mapping editor; no options shown by default |
 | Logical replication | Publication operations including TRUNCATE, slot and subscription-worker inspection | Subscription editor, connection-secret management, lag alerts and version-specific configuration UI |

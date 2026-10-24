@@ -7,7 +7,8 @@ Choose a task below. The [browser handbook](../website/docs/index.html) presents
 | Download or build Trunq | [Installation](install.md) · [Nightly builds](install.md#nightly-builds) |
 | Choose TLS, configure pgpass, SSH or Azure | [Connection and authentication reference](connections.md) |
 | Use service principals, managed identities, AWS/Google IAM or client certificates | [Cloud-neutral authentication](cloud-authentication.md) |
-| Add extensions, configure pg_cron or inspect auditing | [Database administration](administration.md) |
+| Find and enable PostgreSQL extensions | [Extension manager quick start](extensions.md) |
+| Configure pg_cron or inspect auditing | [Database administration](administration.md) |
 | Connect and run my first query | [User guide](usage.md#first-steps) |
 | Use parameters, edit rows or manage transactions | [Practical workflows](workflows.md) |
 | Understand paging, pinned results, charts and export limits | [Data scopes](workflows.md#understand-which-data-a-tool-uses) |

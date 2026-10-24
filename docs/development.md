@@ -24,7 +24,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
   cargo test --locked live_tests -- --test-threads=1
 ```
 
-This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, and CSV/SQL export round trips. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
+This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, CSV/SQL export round trips and the extension manager's trusted-extension install/upgrade/recovery with a restricted role. The latter needs an absent `hstore` or `pg_trgm` extension and its server files; it cleans up only its own extension/schema/role fixtures. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
 
 Optional fixture checks:
 

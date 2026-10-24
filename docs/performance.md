@@ -44,3 +44,25 @@ cargo test --locked scrolling_loaded_pages_does_not_reverse_direction
 - Diagram and browser metadata reuse the existing catalog. No extra polling is introduced for these features.
 
 Rendering only visible cells does not make loading an entire result free. **Load all** intentionally retains rows; use **Export → Entire result from the server** for a bounded-memory file export. A suspended portal keeps a PostgreSQL transaction open until it is exhausted or closed; Trunq now reports that state.
+
+## Chart preparation cache (25 October 2026)
+
+Measured at source checkpoint `f907238` in the Linux cloud environment, Rust 1.95 release profile, with three visible vCPUs reporting Intel Xeon Platinum 8573C. Other development checks and GUI sessions were running. These are workload observations, not controlled client rankings or a scroll-FPS measurement. The extension-manager follow-up does not change the chart algorithm.
+
+| Workload | Observed result |
+|---|---:|
+| Prepare 1,000,000 rows with reversed numeric X and one finite Y series, then decimate for a 1,000-point-wide plot | 62.630 ms |
+| 1,000 unchanged data/geometry preparation requests after that | 0.053 ms total |
+| Retained decimated points for that series/width | 2,002 |
+
+The fixture uses X values from 1,000,000 down to 1 and Y values `row_index % 997`. Fixture construction is excluded. Preparation includes parsing, sorting X, parsing Y, finding the value range and building pixel-bucket extrema. The cached measurement is cache validation; it excludes drawing, layout, hover text, GPU submission, database execution and network transfer. It must not be interpreted as a complete frame time.
+
+Previously this preparation happened again during every chart frame. The client now reuses parsed/sorted data until the result identity, row payload, axes, series, type categories or line/bar mode changes. Width changes rebuild decimation without sorting/parsing again. Cached painting walks the decimated points; nearest-X hover lookup uses the sorted values. Cache invalidation tests cover appends, equal-sized result replacements, axes and kind changes.
+
+This trades memory for repeated work. On a 64-bit target, a million-row line chart retains roughly 16 MB of X/source-row pairs plus 8 MB per selected Y series, excluding capacity, the original result and drawing geometry. The first preparation remains proportional to the data volume, and resize-driven decimation still scans the loaded data. Bars retain only their displayed subset.
+
+```sh
+cargo test --release --locked bench_chart_million -- --ignored --nocapture
+```
+
+The regression suite also checks timestamp offsets, rejects NaN/Infinity coordinates and preserves the source order of bucket extrema and the actual line endpoints.

@@ -1,5 +1,27 @@
 # Validation record
 
+## 25 October 2026: cloud authentication, extension manager and chart iteration
+
+Checks ran in the Linux cloud environment with Rust 1.95.0, disposable PostgreSQL 17.11 databases and a separate TLS/extension fixture. Actual provider logins were not configured.
+
+| Check | Result |
+|---|---|
+| `cargo test --locked --all-targets -- --test-threads=1` | 90 passed, 0 failed, 3 opt-in benchmarks ignored |
+| Ordinary database fixtures | 13 tests connected, including two extension-manager tests; the fake TLS-stall test runs separately without PostgreSQL |
+| Extension manager, restricted role | Permission denial recovered; after explicit grants a non-superuser installed hstore 1.4 into its chosen schema, upgraded to 1.8, and the manager refreshed; read-only guards blocked further apply requests |
+| Extension dependencies | earthdistance failed without cube; explicit dependency inclusion enabled both; the test removed only its own fixtures |
+| Real TLS/mTLS fixture | Custom CA trusted, wrong hostname/untrusted CA rejected, missing client certificate refused, certificate-authenticated `cert_user` connected |
+| pg_cron 1.6.5 and pgAudit 17.1 fixture | Bound schedule/pause/remove ran as a restricted role with explicit function permission; a separate one-second server job completed `SELECT 1`; schedules were removed; pgAudit DDL/WRITE log entries observed |
+| Native UI | 50,000-row chart and administration palette rendered; the running extension manager searched 47 available entries and enabled hstore 1.8 through its button; installed state and success feedback refreshed |
+| Native cleanup | No Trunq sessions remained after exit; the native hstore smoke extension and test roles/schedules were removed |
+| Website | Twelve Chromium browser groups passed; new cloud/admin section anchors align on mobile/desktop and homepage search navigates to the cloud guide |
+| Documentation | Local links, headings and images resolve, including the new cloud-authentication, administration and extension quick-start guides |
+| Million-row release chart benchmark | 62.630 ms initial preparation; 0.053 ms for 1,000 cache validations; [workload and limits](performance.md#chart-preparation-cache-25-october-2026) |
+
+The earlier cloud/authentication checkpoint `f907238` passed [all eleven CI jobs](https://github.com/IssamElNass/Trunq/actions/runs/40141494718), including macOS/Windows/Linux, Clippy, the website and PostgreSQL 13–18. Its [Docker desktop smoke run](https://github.com/IssamElNass/Trunq/actions/runs/40141494689) also passed. These dated runs precede the final extension-manager follow-up; [PR #10 checks](https://github.com/IssamElNass/Trunq/pull/10/checks) track its current revision.
+
+Live Azure/AWS/Google authentication, real provider allowlists/restarts, SSH and OS keychains were not exercised locally. The ordinary suite returns early for the optional TLS/pg_cron fixtures unless their variables are provided; they were run separately above. Installing SQL objects does not configure provider flags or durable audit-log collection.
+
 ## 24 October 2026: regression and documentation pass
 
 These checks ran in the Linux cloud environment with Rust 1.95.0 and a disposable PostgreSQL 17.11 database. They do not establish results for other operating systems or the full CI matrix.

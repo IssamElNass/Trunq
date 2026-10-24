@@ -131,6 +131,7 @@ pub struct App {
     pending_ddl: Vec<(u64, BatchPromise)>,
     palette: Option<(String, usize)>,
     import: Option<crate::ui::import::ImportDialog>,
+    extensions: Option<crate::ui::extensions::ExtensionDialog>,
     pending_actions: Vec<Action>,
     /// DDL being fetched for "Copy DDL": (label, result)
     pending_copy: Vec<(String, BatchPromise)>,
@@ -210,6 +211,7 @@ impl App {
             pending_ddl: Vec::new(),
             palette: None,
             import: None,
+            extensions: None,
             pending_actions: Vec::new(),
             pending_copy: Vec::new(),
             dirty_config: false,
@@ -365,6 +367,12 @@ impl App {
                 Action::OpenHealth { profile, db } => {
                     self.tabs.push(Tab::Health(crate::tabs::health::HealthTab::new(profile, &db)));
                     self.active = self.tabs.len() - 1;
+                }
+                Action::OpenExtensions { profile, db, selected } => {
+                    if let Some(p) = self.profile(profile).cloned() {
+                        let password = self.passwords.get(&profile).cloned();
+                        self.extensions = Some(crate::ui::extensions::ExtensionDialog::new(p, db, selected, password, ui.ctx()));
+                    }
                 }
                 Action::OpenDashboard { profile } => {
                     if let Some(i) = self.tabs.iter().position(|t| matches!(t, Tab::Sessions(s) if s.profile_id == profile)) {
@@ -759,6 +767,10 @@ impl App {
                 actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: String::new(), run: false });
             }
             r.context_menu(|ui| {
+                if w::menu_item(ui, icon::PLUG, "Manage extensions…").clicked() {
+                    actions.push(Action::OpenExtensions { profile: pid, db: db.clone(), selected: None });
+                    ui.close();
+                }
                 if w::menu_item(ui, icon::FILE_PLUS, "New query").clicked() {
                     actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: String::new(), run: false });
                     ui.close();
@@ -1317,6 +1329,11 @@ impl App {
 
     fn overlays(&mut self, ctx: &egui::Context) {
         let pal = theme::p();
+        if let Some(dialog) = &mut self.extensions
+            && dialog.show(ctx, &mut self.pending_actions)
+        {
+            self.extensions = None;
+        }
         // connection dialog
         if let Some(d) = &mut self.dialog
             && let Some(outcome) = d.show(ctx)
@@ -2180,6 +2197,13 @@ impl App {
         }
         for s in &self.servers {
             for (db, n) in &s.nodes {
+                items.push((
+                    icon::PLUG,
+                    pal.accent,
+                    format!("Manage extensions · {db}"),
+                    "enable, versions, dependencies".into(),
+                    PaletteCmd::Act(Action::OpenExtensions { profile: s.profile_id, db: db.clone(), selected: None }),
+                ));
                 for recipe in crate::db::admin::RECIPES {
                     items.push((
                         icon::CODE,
@@ -2490,6 +2514,7 @@ impl App {
                 self.dialog = None;
                 self.palette = None;
                 self.import = None;
+                self.extensions = None;
                 self.show_connections = false;
                 self.show_settings = false;
                 self.show_history = false;
@@ -2729,13 +2754,34 @@ fn server_objects_tree(ui: &mut Ui, server: &mut Server, profile: &Profile, filt
 fn database_objects_tree(ui: &mut Ui, node: &mut DbNode, cat: &Catalog, pid: u64, db: &str, filter: &str, actions: &mut Vec<Action>) {
     let matches = |name: &str| filter.is_empty() || name.to_lowercase().contains(filter);
     let extensions: Vec<_> = cat.extensions.iter().filter(|(name, _)| matches(name)).collect();
-    if object_group_filtered(ui, &mut node.open, "db/extensions".into(), 2, icon::PLUG, "Extensions", extensions.len(), !filter.is_empty()) {
+    let extensions_key = "db/extensions".to_owned();
+    let extensions_open = node.open.contains(&extensions_key) || !filter.is_empty();
+    if !extensions.is_empty() {
+        let (response, _) = tree_row(ui, 2, Some(extensions_open), icon::PLUG, theme::p().dim, "Extensions", &extensions.len().to_string(), None, false, false);
+        if response.clicked() && !node.open.remove(&extensions_key) {
+            node.open.insert(extensions_key);
+        }
+        if response.double_clicked() {
+            actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: None });
+        }
+        response.on_hover_text("Double-click or right-click to manage available extensions").context_menu(|ui| {
+            if w::menu_item(ui, icon::PLUG, "Manage extensions…").clicked() {
+                actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: None });
+                ui.close();
+            }
+        });
+    }
+    if extensions_open {
         for (name, version) in extensions {
             let (r, _) = tree_row(ui, 3, None, icon::PLUG, theme::p().dim, name, version, None, false, false);
             if r.double_clicked() {
-                actions.push(Action::NewQuery { profile: pid, db: db.into(), sql: crate::db::admin::extension_details(name), run: false });
+                actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: Some(name.clone()) });
             }
             r.context_menu(|ui| {
+                if w::menu_item(ui, icon::PLUG, "Manage extension…").clicked() {
+                    actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: Some(name.clone()) });
+                    ui.close();
+                }
                 for (label, sql) in [
                     ("Available versions and requirements", crate::db::admin::extension_details(name)),
                     ("Update extension · review SQL", crate::db::admin::extension_update(name)),

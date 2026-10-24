@@ -115,6 +115,7 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
 - **Command palette** (⌘K): one search field for tables, views, functions, connections, saved snippets, recent queries and commands such as *Format SQL* or *Switch this tab to another connection*.
 - **Object tree** with databases, schemas, tables (expand to columns with types, keys and foreign keys), views, materialized views, sequences, functions and types, with row estimates and sizes.
+- **Extension manager**: search every server-provided extension by name/description, choose a version/schema, review optional dependencies and enable/update directly. Read-only/recovery guards and server error reporting are included. [Quick start](extensions.md).
 - **Database tools**: extension version/dependency inventory, reviewed create/update templates, pg_cron scheduling/pause/removal, audit/security inspections, foreign-server and replication inventories. Installed extensions, event triggers and publications appear in the tree. [Administration and limits](administration.md).
 - **Quick DDL**: view or copy the DDL of a table, view, function, sequence or index from the context menu.
 - Generate SELECT, INSERT, UPDATE, DELETE, EXPLAIN and maintenance commands from the context menu.

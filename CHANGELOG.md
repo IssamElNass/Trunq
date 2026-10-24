@@ -7,6 +7,7 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Searchable extension manager for all server-provided extensions, with version/schema selection, opt-in dependencies, direct enable/update, read-only guards and automatic catalog refresh.
 - Cloud-neutral token commands with Azure CLI, AWS RDS and Google Cloud presets; native Azure service-principal secrets from environment variables.
 - Per-profile PEM CA bundles and TLS client certificates with PKCS #8 keys.
 - Database tools for extension inventory/update SQL, pg_cron job templates, audit/security inspection, foreign data and replication; tree groups for extensions, event triggers and publications.

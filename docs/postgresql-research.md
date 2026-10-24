@@ -38,7 +38,7 @@ Database tools expose existing cached extension/event-trigger/publication metada
 | Next capability | Value | Design requirement |
 |---|---|---|
 | Effective privilege report | Explain why a user can access an object | Account for ownership, PUBLIC, direct/inherited membership, SET ROLE rules, default ACLs, SECURITY DEFINER and RLS; role attributes alone are insufficient |
-| Extension/job editor | Reduce copying SQL while retaining review | Discover installed function signatures/versions and provider constraints; preserve job ownership and bound values |
+| Job editor and deeper extension preflight | Build on the searchable extension manager and existing job templates | Discover function signatures/versions and provider constraints; preserve job ownership and bound values |
 | Replication dashboard | Catch retained WAL and failed subscriptions | Use version-specific columns/permissions; never display stored connection secrets by default; distinguish lag from inactive slots |
 | More object editors | Types/domains, collations, languages, operators, casts, text search and extended statistics | Show dependencies and complete DDL before mutation; avoid treating provider admin roles as real superusers |
 | Audit log viewer | Correlate database and control-plane events | Separate read-only log credentials from database roles, expose retention/gaps and support provider adapters; local query history cannot substitute |

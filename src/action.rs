@@ -44,6 +44,11 @@ pub enum Action {
         profile: u64,
         db: String,
     },
+    OpenExtensions {
+        profile: u64,
+        db: String,
+        selected: Option<String>,
+    },
     /// Entity relationship diagram of a database, a schema, or the
     /// neighbourhood of one table (oid, name).
     OpenErd {
