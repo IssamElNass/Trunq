@@ -1,0 +1,48 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug! Please never paste passwords, tokens or private data.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect to …
+        2. Run …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Trunq version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS (Apple Silicon), macOS (Intel), Windows, Linux (X11), Linux (Wayland)]
+    validations:
+      required: true
+  - type: input
+    id: pg
+    attributes:
+      label: PostgreSQL version & hosting
+      placeholder: 16.4 on Azure Flexible Server / RDS / self-hosted …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages / screenshots
+      description: Copy the error from the Messages tab if there is one.

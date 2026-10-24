@@ -1,0 +1,10 @@
+**
+!Cargo.toml
+!Cargo.lock
+!src/
+!src/**
+!assets/
+!assets/**
+!packaging/
+!packaging/docker/
+!packaging/docker/**

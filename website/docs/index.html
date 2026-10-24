@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation · Trunq</title>
+  <meta name="description" content="Learn how to install Trunq, connect to PostgreSQL (including Azure Entra ID), write queries, edit data safely and troubleshoot problems.">
+  <meta name="theme-color" content="#070B11">
+  <link rel="icon" type="image/png" href="../assets/favicon.png">
+  <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+  <link rel="preload" href="../fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem("trunq-theme") ||
+        (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.dataset.theme = t;
+      document.documentElement.classList.add("js");
+    })();
+  </script>
+</head>
+<body class="docs-page">
+<a class="skip" href="#doc">Skip to content</a>
+
+<header class="bar" data-bar>
+  <div class="bar__inner">
+    <a class="brand" href="../" aria-label="Trunq home">
+      <img class="brand__logo logo-on-dark" src="../assets/logo-light.png" alt="" width="27" height="29">
+      <img class="brand__logo logo-on-light" src="../assets/logo-dark.png" alt="" width="27" height="29">
+      <span>Trunq</span><span class="brand__tag">Docs</span>
+    </a>
+    <nav class="bar__nav" aria-label="Primary">
+      <a href="../#tour" data-spy="speed tour">Features</a>
+      <a href="../#try" data-spy="try">Live demo</a>
+      <a href="./" aria-current="page">Docs</a>
+      <a href="../#faq" data-spy="faq">FAQ</a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CHANGELOG.md" rel="noopener">Changelog<svg class="ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
+    </nav>
+    <div class="bar__actions">
+      <button class="palette-trigger" type="button" data-open-palette aria-label="Search docs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="palette-trigger__label">Search docs</span>
+        <kbd data-mod>⌘</kbd><kbd>K</kbd>
+      </button>
+      <button class="icon-btn bar__desk-only" type="button" data-theme-toggle aria-label="Switch theme" data-tip="Switch theme">
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <a class="icon-btn bar__desk-only" href="https://github.com/IssamElNass/trunq" aria-label="Trunq on GitHub" data-tip="Source on GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>
+      </a>
+      <a class="btn btn--primary btn--sm bar__download" href="../#download">Download</a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-menu" data-menu-btn>
+        <span class="menu-btn__icon" aria-hidden="true"><i></i><i></i></span>Menu
+      </button>
+    </div>
+  </div>
+  <div class="sheet" id="site-menu" data-menu hidden>
+    <nav class="sheet__nav" aria-label="Menu">
+      <a href="../#tour" data-spy="speed tour"><b>Features</b><span>What Trunq does for you</span></a>
+      <a href="../#try" data-spy="try"><b>Live demo</b><span>Try it in your browser</span></a>
+      <a href="./" aria-current="page"><b>Docs</b><span>Install it and learn the ropes</span></a>
+      <a href="../#faq" data-spy="faq"><b>FAQ</b><span>Quick answers to common questions</span></a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CHANGELOG.md" rel="noopener"><b>Changelog<svg class="ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></b><span>What's new in each release</span></a>
+    </nav>
+    <div class="sheet__foot">
+      <a class="btn btn--primary" href="../#download" data-menu-close>Download Trunq</a>
+      <a class="btn btn--ghost" href="https://github.com/IssamElNass/trunq"><svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg> GitHub</a>
+      <button class="btn btn--ghost" type="button" data-theme-toggle><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg> Theme</button>
+    </div>
+  </div>
+</header>
+
+<div class="docs">
+  <aside class="docs__side" aria-label="Documentation">
+    <details class="docs__menu" open data-docs-menu>
+      <summary>Browse docs</summary>
+      <nav class="sidenav">
+        <p>Getting started</p>
+        <a href="#introduction">Introduction</a>
+        <a href="#install">Install</a>
+        <a href="#first-steps">Your first connection</a>
+        <p>Connecting</p>
+        <a href="#connecting">Connection options</a>
+        <a href="#azure">Azure &amp; Entra ID</a>
+        <p>Using Trunq</p>
+        <a href="#editor">Writing queries</a>
+        <a href="#results">Working with results</a>
+        <a href="#editing">Editing data</a>
+        <a href="#charts">Charts</a>
+        <a href="#import">Importing CSV files</a>
+        <a href="#relationships">ER diagrams &amp; metadata</a>
+        <a href="#docker">Docker &amp; Docker Hub</a>
+        <a href="#performance">Performance</a>
+        <a href="#navigation">Finding your way around</a>
+        <p>Staying safe</p>
+        <a href="#safety">Safety features</a>
+        <a href="#health">Health check</a>
+        <a href="#connection-management">Connection management</a>
+        <p>Reference</p>
+        <a href="#shortcuts">Keyboard shortcuts</a>
+        <a href="#storage">Where data is stored</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+        <a href="#faq">FAQ</a>
+        <p>Contributing</p>
+        <a href="#build">Build from source</a>
+        <a href="#development">Development</a>
+      </nav>
+    </details>
+  </aside>
+
+  <article class="doc" id="doc">
+
+    <section id="introduction">
+      <p class="eyebrow">Documentation</p>
+      <h1>Welcome to Trunq</h1>
+      <p class="doc__lede">
+        Trunq is a fast, free desktop app for PostgreSQL. This guide covers everything from installing it
+        and connecting to your first database to the safety features that help keep production healthy.
+      </p>
+      <div class="doc__cards">
+        <a href="#install"><b>Install Trunq →</b><span>Download for macOS, Windows or Linux.</span></a>
+        <a href="#first-steps"><b>Connect in a minute →</b><span>Add a database and run your first query.</span></a>
+        <a href="#safety"><b>Stay out of trouble →</b><span>How Trunq protects your databases.</span></a>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="install">Install</h2>
+      <p>Download the latest version from the <a href="https://github.com/IssamElNass/trunq/releases/latest">Releases page</a> and choose the file for your system:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>System</th><th>File</th><th>How to install</th></tr></thead>
+          <tbody>
+            <tr><td>macOS 11+ (Apple Silicon &amp; Intel)</td><td><code>Trunq-&lt;version&gt;-macos-universal.dmg</code></td><td>Open it and drag <b>Trunq</b> to Applications.</td></tr>
+            <tr><td>Windows 10 / 11 (64-bit)</td><td><code>Trunq-&lt;version&gt;-windows-x86_64.zip</code></td><td>Unzip it and run <code>Trunq.exe</code>.</td></tr>
+            <tr><td>Debian / Ubuntu (64-bit)</td><td><code>trunq_&lt;version&gt;_amd64.deb</code></td><td><code>sudo apt install ./trunq_&lt;version&gt;_amd64.deb</code></td></tr>
+            <tr><td>Other Linux (64-bit)</td><td><code>trunq-&lt;version&gt;-linux-x86_64.tar.gz</code></td><td>Unpack it and run <code>./trunq</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>macOS says it "can't be opened because it is from an unidentified developer"?</b>
+        Right-click <b>Trunq.app → Open</b> once. After that it opens normally.
+      </div>
+      <p>Every release includes SHA-256 checksums in <code>SHA256SUMS.txt</code>, so you can verify your download. If you'd rather compile Trunq yourself, see <a href="#build">Build from source</a>.</p>
+    </section>
+
+    <section>
+      <h2 id="first-steps">Your first connection</h2>
+      <ol class="steps">
+        <li><b>Click New connection</b> (or the plug icon in the top bar).</li>
+        <li><b>Paste a connection URL</b> such as <code>postgres://user:pass@db.example.com:5432/app?sslmode=require</code> and press <b>Apply</b>, or fill in the host, port, database and user yourself.</li>
+        <li><b>Press Test connection, then Save.</b> Give production connections a <b>red colour</b>. The colour appears on every tab and above the editor, so you always know where you are.</li>
+        <li><b>Browse your database.</b> The connection appears in the sidebar. Expand it to see databases, schemas, tables, views, functions and types. Double-click a table to open its data, or right-click anything for more actions.</li>
+        <li><b>Write a query.</b> Press <kbd data-mod>⌘</kbd><kbd>T</kbd> for a new SQL editor, then <kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run the statement under the cursor.</li>
+      </ol>
+      <p>Passwords are saved in your operating system's keychain, never in plain text.</p>
+      <div class="note note--tip">
+        <b>Want something to play with?</b> The repository includes a sample shop database with customers, orders, a million analytics events, views, functions and JSON:
+        <div class="codeblock"><pre data-copyable><code>createdb shop
+psql -d shop -f dev/sample.sql</code></pre></div>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="connecting">Connection options</h2>
+      <p>Trunq speaks the PostgreSQL protocol directly and supports the usual ways of connecting:</p>
+      <ul>
+        <li><b>Encryption (TLS):</b> every <code>sslmode</code> from <code>disable</code> to <code>verify-full</code>.</li>
+        <li><b>Sign-in methods:</b> SCRAM-SHA-256, MD5 and trust.</li>
+        <li><b>Unix sockets:</b> enter the socket directory (for example <code>/tmp</code>) as the host.</li>
+        <li><b><code>~/.pgpass</code>:</b> picked up automatically.</li>
+        <li><b>Connection URLs:</b> paste a <code>postgres://</code> URL and Trunq fills in the form.</li>
+      </ul>
+      <h3 id="connection-safety">Per-connection safety settings</h3>
+      <ul>
+        <li><b>Colour:</b> shown on every tab of that connection. Make production red.</li>
+        <li><b>Read-only:</b> prevents accidental writes.</li>
+        <li><b>Statement timeout:</b> stops runaway queries automatically.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="azure">Azure &amp; Microsoft Entra ID</h2>
+      <p>
+        Azure Database for PostgreSQL accepts a short-lived (about one hour) Entra access token as the password.
+        Trunq gets this token and <b>refreshes it automatically</b> before every new connection, so you never have to paste tokens by hand.
+      </p>
+      <ol class="steps">
+        <li><b>Create a new connection</b> with a host such as <code>myserver.postgres.database.azure.com</code>. Trunq recognises Azure hosts and sets SSL to <code>require</code>.</li>
+        <li><b>Set Authentication to Microsoft Entra ID.</b></li>
+        <li><b>Choose the Azure cloud.</b> Trunq detects it from the host name:
+          <ul>
+            <li><i>Azure (global)</i>: <code>*.postgres.database.azure.com</code></li>
+            <li><i>Azure China (21Vianet)</i>: <code>*.postgres.database.chinacloudapi.cn</code></li>
+            <li><i>Azure US Government</i>: <code>*.postgres.database.usgovcloudapi.net</code></li>
+          </ul>
+        </li>
+        <li><b>Pick a sign-in method:</b>
+          <ul>
+            <li><b>Interactive (browser):</b> opens the Microsoft sign-in page. After the first sign-in, the refresh token is kept in your keychain and new tokens are created silently for about 90 days.</li>
+            <li><b>Device code:</b> for machines without a browser (remote desktops, SSH). Trunq shows a code to enter at <code>microsoft.com/devicelogin</code> or the China equivalent.</li>
+            <li><b>Azure CLI:</b> reuses your <code>az login</code> session. For China, run <code>az cloud set --name AzureChinaCloud</code> first.</li>
+          </ul>
+        </li>
+        <li><b>User:</b> your Entra user principal (for example <code>jane@contoso.com</code>) or the name of the Entra group or role that was granted access. Leave it empty to use the signed-in account.</li>
+        <li><b>Optional:</b> a <b>Tenant</b> (<code>contoso.onmicrosoft.com</code> or a tenant ID). Under <i>Advanced</i> you can set your own <b>client ID</b> if your organisation blocks the Azure CLI public client.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2 id="editor">Writing queries</h2>
+      <p>The SQL editor understands PostgreSQL and helps you as you type.</p>
+      <ul>
+        <li><b>Smart autocompletion</b> for tables, columns, schemas, functions and keywords. It understands aliases: typing <code>o.</code> suggests the columns of <code>orders o</code>.</li>
+        <li><b>Run what you need:</b> the statement under the cursor (<kbd data-mod>⌘</kbd><kbd>⏎</kbd>), the selection, or the whole script (<kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd>). Each result opens in its own tab.</li>
+        <li><b>Clear errors:</b> mistakes are underlined at the exact position PostgreSQL reports.</li>
+        <li><b>Parameters:</b> write <code>WHERE id = :id</code> and Trunq asks for the value. Values are remembered per tab.</li>
+        <li><b>Handy editing:</b> formatter, comment toggle, indent and outdent, and duplicate line.</li>
+        <li><b>Files &amp; history:</b> open and save <code>.sql</code> files (or drop them on the window), search your query history, and your workspace is restored when you restart.</li>
+        <li><b>Messages:</b> notices and <code>NOTIFY</code> events appear in the Messages tab.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="results">Working with results</h2>
+      <p>Results never freeze the app, however big they are.</p>
+      <ul>
+        <li><b>Streaming:</b> the first page contains up to 1,000 rows and more load as you scroll. Server execution still depends on the query and database.</li>
+        <li><b>Smooth grid:</b> millions of rows and hundreds of columns scroll at full frame rate, with sticky headers, row numbers, and resizable or auto-fit columns.</li>
+        <li><b>Spreadsheet-style selection</b> with live <b>Σ / avg / min / max</b> of the selected numbers.</li>
+        <li><b>Sort and filter</b> instantly.</li>
+        <li><b>Copy or export</b> as TSV, CSV, JSON, Markdown, SQL <code>INSERT</code> statements or an <code>IN (…)</code> list.</li>
+        <li><b>Follow foreign keys:</b> <kbd data-mod>⌘</kbd>-click a foreign key value to jump to the row it points to, in any result.</li>
+        <li><b>Value viewer</b> with pretty-printed JSON.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="editing">Editing data</h2>
+      <figure class="doc__shot"><img src="../assets/shots/table.webp" alt="Trunq's table editor with changed cells highlighted." width="1600" height="1000"></figure>
+      <ol class="steps">
+        <li><b>Double-click a table</b> to browse it. Use the <code>WHERE</code> / <code>ORDER BY</code> bar to narrow it down. Key icons mark the primary key.</li>
+        <li><b>Edit cells inline,</b> or add, duplicate and delete rows, and set values to NULL. Changed cells are highlighted.</li>
+        <li><b>Preview the generated SQL,</b> then save everything in one transaction.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2 id="charts">Charts</h2>
+      <p>Turn any result into a chart with one click. Time or numeric X values become a line chart, and categories become bars. The palette is colour-blind safe, with hover tooltips, a legend and direct labels. Trunq never mixes wildly different scales on one axis.</p>
+    </section>
+
+    <section>
+      <h2 id="import">Importing CSV files</h2>
+      <p>Drop a CSV or TSV file onto the window. Trunq works out the delimiter, header, column names and <b>column types</b> (integer, bigint, numeric, boolean, date, timestamptz, uuid, jsonb).</p>
+      <p>Create a new table or add to an existing one. The data is streamed in a single transaction with live progress, which is the fastest way to load data into PostgreSQL.</p>
+    </section>
+
+    <section>
+      <h2 id="relationships">ER diagrams &amp; metadata</h2>
+      <p>Right-click a database, schema or table and choose <b>ER diagram</b>, or find it in the command palette. Diagrams reuse the loaded catalog, so opening one needs no additional database query.</p>
+      <figure class="doc__shot"><img src="../assets/shots/erd.webp" alt="Native ER diagram showing customers, orders, products and order items with foreign-key relationships." width="2880" height="1800" loading="lazy"><figcaption>The sample shop schema, captured from the running client.</figcaption></figure>
+      <p>Pan, zoom, drag tables, inspect columns and keys, or export SVG and Mermaid. Opening from a table focuses its neighbourhood; opening from a schema limits the graph to that schema.</p>
+      <h3 id="catalog-details">Inspect the catalog</h3>
+      <p>Expand a table for its indexes, constraints, triggers and policies. Hover for index methods, validity, constraint definitions and trigger functions. An RLS indicator marks enabled row security. Server-level <b>Roles</b> and <b>Tablespaces</b> show attributes and ownership; right-click a role to copy its DDL.</p>
+      <h3 id="slow-queries">Find expensive statements</h3>
+      <p>Right-click a database → <b>Slow queries (pg_stat_statements)</b>. Review and run the generated SQL to inspect calls, execution time, returned rows and buffer/temp-block counters. Your DBA must preload and install <a href="https://www.postgresql.org/docs/18/pgstatstatements.html">pg_stat_statements</a>; Trunq does not change the server configuration. Access to other users’ query text depends on your role.</p>
+    </section>
+
+    <section>
+      <h2 id="docker">Docker &amp; Docker Hub</h2>
+      <p>The Docker image runs the native client in a browser-accessible noVNC desktop. Use a native release for maximum interactive performance: the container adds software rendering and desktop streaming.</p>
+      <div class="codeblock"><pre data-copyable><code>docker compose up --build -d</code></pre></div>
+      <p>Open <a href="http://localhost:8080/vnc.html?autoconnect=true&amp;resize=scale">localhost:8080/vnc.html</a>. The virtual screen scales to your browser window. The Compose file keeps the workspace in a volume and publishes only on loopback. The desktop has no built-in authentication; keep that binding for local use or use an SSH tunnel for remote access. Connect to host PostgreSQL via <code>host.docker.internal</code>.</p>
+      <figure class="doc__shot"><img src="../assets/shots/docker.webp" alt="Trunq running in Docker with query results from PostgreSQL 18" width="1440" height="900" loading="lazy"><figcaption>The running Docker desktop, connected to PostgreSQL 18 with sample data.</figcaption></figure>
+      <h3 id="dockerhub">Publish your image</h3>
+      <p>Configure the repository variable <code>DOCKERHUB_USERNAME</code> and secret <code>DOCKERHUB_TOKEN</code>. The Docker workflow builds and smoke-tests the desktop before publishing amd64 and arm64 images on version tags or an explicit manual run. Stable version tags update <code>latest</code>; manual runs publish a commit tag.</p>
+      <p>See the <a href="https://github.com/IssamElNass/trunq/blob/main/docs/docker.md">full Docker guide</a> for manual Buildx commands, the native target, credentials and remote access.</p>
+    </section>
+
+    <section>
+      <h2 id="performance">Performance you can measure</h2>
+      <p>Trunq pages results through PostgreSQL portals and draws visible grid cells. Empty searches and selection aggregates stay cached until the relevant data, view or edits change. Search, sort and hidden empty columns include pending edits.</p>
+      <div class="codeblock"><pre data-copyable><code>cargo test --release --locked bench_empty_filter_million -- --ignored --nocapture
+TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch_million -- --ignored --nocapture</code></pre></div>
+      <p>Fetching, server execution and drawing are different costs. A fast first page is not a guarantee that any query will execute quickly. The <a href="https://github.com/IssamElNass/trunq/blob/main/docs/performance.md">performance report</a> describes the workload and measured limits; the <a href="https://github.com/IssamElNass/trunq/blob/main/docs/postgresql-research.md">research notes</a> distinguish shipped features from future PostgreSQL integrations.</p>
+      <figure class="doc__shot"><img src="../assets/shots/compact.webp" alt="SQL results and a JSON data viewer in a compact Trunq window." width="1800" height="1240" loading="lazy"><figcaption>The data viewer adapts to a compact window.</figcaption></figure>
+    </section>
+
+    <section>
+      <h2 id="navigation">Finding your way around</h2>
+      <ul>
+        <li><b>Command palette</b> (<kbd data-mod>⌘</kbd><kbd>K</kbd>): fuzzy-jump to any table, view, function, connection or command.</li>
+        <li><b>Object tree:</b> databases, schemas, tables (expand to see columns, keys and foreign keys), views, materialized views, sequences, functions and types, with row estimates and sizes.</li>
+        <li><b>Generate SQL</b> from the right-click menu: <code>SELECT</code> / <code>INSERT</code> / <code>UPDATE</code> / <code>DELETE</code>, DDL, function definitions and maintenance commands.</li>
+        <li><b>Query plans:</b> <code>EXPLAIN</code> and <code>EXPLAIN ANALYZE</code> are shown visually, with each step's share of the time, loop counts and row-estimate warnings.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="safety">Safety features</h2>
+      <p>Trunq is designed to help you avoid the mistakes that cause outages.</p>
+
+      <h3 id="lock-detective">Lock detective</h3>
+      <p>When a query has been running for more than 1.5 seconds, Trunq shows what it's waiting for and <b>which session is blocking it</b>, including the user, application, query and transaction age. One click cancels that session's query or terminates the session.</p>
+
+      <h3 id="dry-run">Dry run</h3>
+      <p>Press <kbd>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code> inside a transaction. Trunq shows exactly which rows would change and then <b>always rolls back</b>.</p>
+
+      <h3 id="migration-linter">Migration linter</h3>
+      <p>Before running a change that would block or rewrite a table, Trunq explains the risk and the safe alternative. Plain <code>CREATE INDEX</code> statements get a one-click <i>Add CONCURRENTLY</i> fix. Trunq checks for:</p>
+      <ul class="cols">
+        <li>Plain <code>CREATE INDEX</code></li>
+        <li>Column type changes</li>
+        <li><code>SET NOT NULL</code></li>
+        <li>Foreign keys without <code>NOT VALID</code></li>
+        <li>Volatile defaults</li>
+        <li><code>VACUUM FULL</code></li>
+      </ul>
+
+      <h3 id="confirmations">Confirmations &amp; guards</h3>
+      <ul>
+        <li>Trunq asks before running an <code>UPDATE</code> or <code>DELETE</code> without <code>WHERE</code>, a <code>DROP</code>, or a <code>TRUNCATE</code>.</li>
+        <li><b>Forgotten-transaction guard:</b> a banner appears when a tab has held a transaction (and its locks) open for more than a minute.</li>
+        <li><b>Live progress</b> for <code>CREATE INDEX</code>, <code>VACUUM</code>, <code>ANALYZE</code>, <code>COPY</code> and <code>CLUSTER</code>.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="health">Health check</h2>
+      <figure class="doc__shot"><img src="../assets/shots/health.webp" alt="Trunq's health check showing one critical finding and several passed checks." width="1600" height="1000"></figure>
+      <p>One click finds the problems that cause real outages. Each finding comes with generated fix SQL for you to review, and nothing runs automatically.</p>
+      <ul class="cols">
+        <li>Integer IDs close to running out</li>
+        <li>Transaction-ID wraparound</li>
+        <li>Inactive replication slots filling the disk</li>
+        <li>Foreign keys without indexes</li>
+        <li>Invalid, duplicate or unused indexes</li>
+        <li>Bloated or never-analyzed tables</li>
+        <li>Long-running transactions</li>
+        <li>Tables without a primary key</li>
+        <li>Low cache-hit ratio</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="connection-management">Connection management</h2>
+      <p>Trunq never leaks connections.</p>
+      <ul>
+        <li>Every connection belongs to exactly one tab or sidebar item, and closes when that goes away. A running statement is cancelled first.</li>
+        <li>Idle query tabs disconnect after 15 minutes and reconnect transparently when you come back.</li>
+        <li>The status bar shows the live connection count. Click it to see every connection (purpose, PID, age) and close any of them.</li>
+        <li>Each connection sets <code>application_name</code> (for example <code>Trunq — Query 3</code>), so you can find it in <code>pg_stat_activity</code>.</li>
+        <li>Background metadata connections use <code>lock_timeout</code> and <code>statement_timeout</code> and never take table locks, so they can't get stuck behind a migration.</li>
+        <li>TCP keep-alive detects dead networks, and everything is closed cleanly on exit.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 id="shortcuts">Keyboard shortcuts</h2>
+      <p data-mod-hint>On Windows and Linux, use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.</p>
+      <div class="table-wrap">
+        <table class="keys-table">
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Run statement under cursor (or selection)</td></tr>
+            <tr><td><kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Run whole script</td></tr>
+            <tr><td><kbd>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Dry run (INSERT / UPDATE / DELETE, always rolled back)</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>E</kbd> · <kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>E</kbd></td><td>Explain · Explain Analyze</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Cancel running query</td></tr>
+            <tr><td><kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>F</kbd></td><td>Format SQL</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>/</kbd></td><td>Toggle line comment</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>D</kbd></td><td>Duplicate line</td></tr>
+            <tr><td><kbd>Tab</kbd> · <kbd>⇧</kbd><kbd>Tab</kbd></td><td>Indent · outdent</td></tr>
+            <tr><td><kbd>⌃</kbd><kbd>Space</kbd></td><td>Show completions</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>S</kbd></td><td>Save SQL file</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>K</kbd> or <kbd data-mod>⌘</kbd><kbd>P</kbd></td><td>Command palette</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>T</kbd> · <kbd data-mod>⌘</kbd><kbd>W</kbd></td><td>New tab · close tab</td></tr>
+            <tr><td><kbd>⌃</kbd><kbd>Tab</kbd> · <kbd>⌃</kbd><kbd>⇧</kbd><kbd>Tab</kbd></td><td>Next · previous tab</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>B</kbd></td><td>Toggle sidebar</td></tr>
+            <tr><td><kbd data-mod>⌘</kbd><kbd>A</kbd> · <kbd data-mod>⌘</kbd><kbd>C</kbd> · <kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>C</kbd></td><td>Grid: select all · copy · copy with headers</td></tr>
+            <tr><td><kbd>Enter</kbd> · <kbd>F2</kbd> · double-click</td><td>Grid: edit cell (table view) or view value</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="storage">Where data is stored</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead>
+          <tbody>
+            <tr><td>Settings, connections, open tabs</td><td><code>~/Library/Application Support/dev.trunq.Trunq/config.json</code></td><td><code>~/.config/trunq/config.json</code></td><td><code>%APPDATA%\trunq\Trunq\config\config.json</code></td></tr>
+            <tr><td>Query history</td><td colspan="3"><code>history.jsonl</code> in the same folder</td></tr>
+            <tr><td>Passwords &amp; Azure refresh tokens</td><td>Keychain</td><td>Secret Service (GNOME Keyring / KWallet)</td><td>Credential Manager</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>To reset Trunq, delete the settings folder.</p>
+    </section>
+
+    <section>
+      <h2 id="troubleshooting">Troubleshooting</h2>
+      <dl class="faq-dl">
+        <dt>"password authentication failed" or "no password supplied"</dt>
+        <dd>Type the password in the field that appears in the sidebar or above the editor. It's remembered for the session, and saved in the keychain if <i>Save in keychain</i> is on.</dd>
+        <dt>Azure: <code>AADSTS…</code> errors</dt>
+        <dd>Check the tenant, check that your account (or its group) was added as an Entra admin or role on the server, and check that the right cloud is selected. If your organisation's policy blocks the browser flow, try <i>Device code</i>.</dd>
+        <dt>The app window is blank on an old GPU or virtual machine</dt>
+        <dd>Start Trunq with <code>WGPU_BACKEND=gl</code> to use OpenGL.</dd>
+        <dt>Keychain prompts on macOS</dt>
+        <dd>Click <i>Always Allow</i> once so Trunq can read its saved passwords.</dd>
+        <dt>macOS won't open the app</dt>
+        <dd>Right-click <b>Trunq.app → Open</b> once, or run <code>xattr -dr com.apple.quarantine /Applications/Trunq.app</code>.</dd>
+      </dl>
+      <p>Still stuck? <a href="https://github.com/IssamElNass/trunq/issues/new/choose">Open an issue on GitHub</a>.</p>
+    </section>
+
+    <section>
+      <h2 id="faq">FAQ</h2>
+      <p>Quick answers to the questions people ask most. Can't find yours? <a href="https://github.com/IssamElNass/trunq/issues/new/choose">Ask on GitHub</a> and we'll add it.</p>
+      <div class="faq-docs" data-faq-docs></div>
+    </section>
+
+    <section>
+      <h2 id="build">Build from source</h2>
+      <p>You'll need <a href="https://rustup.rs">Rust</a>. The first build downloads and compiles dependencies and takes a few minutes. Later builds are incremental.</p>
+      <div class="tabs" role="tablist" aria-label="Choose your system">
+        <button role="tab" aria-selected="true" aria-controls="build-mac" id="tab-mac" data-os-tab="mac">macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="build-linux" id="tab-linux" data-os-tab="deb linux" tabindex="-1">Linux</button>
+        <button role="tab" aria-selected="false" aria-controls="build-win" id="tab-win" data-os-tab="win" tabindex="-1">Windows</button>
+      </div>
+      <div role="tabpanel" id="build-mac" aria-labelledby="tab-mac">
+        <div class="codeblock"><pre data-copyable><code><span class="c"># 1. Install Rust (once)</span>
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+<span class="c"># 2. Get the code, build Trunq.app and copy it to /Applications</span>
+git clone https://github.com/IssamElNass/trunq.git trunq
+cd trunq
+./scripts/bundle-macos.sh --install</code></pre></div>
+        <p>Use <code>./scripts/bundle-macos.sh</code> to only build <code>Trunq.app</code>, or add <code>--dmg</code> to also create a shareable <code>Trunq.dmg</code>. Requires macOS 11+ and the Xcode command line tools (<code>xcode-select --install</code>).</p>
+      </div>
+      <div role="tabpanel" id="build-linux" aria-labelledby="tab-linux" hidden>
+        <div class="codeblock"><pre data-copyable><code><span class="c"># Debian / Ubuntu build dependencies</span>
+sudo apt install build-essential pkg-config libssl-dev libxkbcommon-dev libwayland-dev \
+  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libdbus-1-dev
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+git clone https://github.com/IssamElNass/trunq.git trunq && cd trunq
+cargo build --release
+sudo install -m 755 target/release/trunq /usr/local/bin/trunq</code></pre></div>
+        <p>On Fedora: <code>sudo dnf install gcc pkgconf openssl-devel libxkbcommon-devel wayland-devel gtk3-devel dbus-devel</code>.</p>
+      </div>
+      <div role="tabpanel" id="build-win" aria-labelledby="tab-win" hidden>
+        <p>Install <a href="https://rustup.rs">Rust</a> and choose the MSVC toolchain (it installs the Visual Studio build tools). Then, in a terminal:</p>
+        <div class="codeblock"><pre data-copyable><code>git clone https://github.com/IssamElNass/trunq.git trunq
+cd trunq
+cargo build --release
+.\target\release\trunq.exe</code></pre></div>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="development">Development</h2>
+      <p>Read <a href="https://github.com/IssamElNass/trunq/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> before opening a pull request.</p>
+      <div class="codeblock"><pre data-copyable><code>cargo run              <span class="c"># debug build, fastest to compile</span>
+cargo run --release    <span class="c"># optimised build</span>
+cargo test             <span class="c"># run the test suite</span></code></pre></div>
+      <h3 id="code-layout">Code layout</h3>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td><code>src/db/</code></td><td>wire protocol client, sessions, catalog introspection, Azure Entra auth</td></tr>
+            <tr><td><code>src/sql/</code></td><td>lexer, autocompletion, formatter, migration linter</td></tr>
+            <tr><td><code>src/ui/</code></td><td>theme, editor, data grid, connection dialog, explain view</td></tr>
+            <tr><td><code>src/tabs/</code></td><td>query / table tab, live monitor, health check</td></tr>
+            <tr><td><code>src/app.rs</code></td><td>window layout, sidebar, tabs, palette, dialogs</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="scripted-runs">Scripted UI runs</h3>
+      <p>Load <code>dev/sample.sql</code> into a disposable database and run <code>TRUNQ_TEST_DATABASE_URL=postgres://… python3 scripts/screenshots.py</code>. It captures twelve views in a temporary workspace and converts them to WebP when <code>cwebp</code> is available. <code>TRUNQ_CONFIG_DIR</code> selects an isolated configuration directory.</p>
+      <p>For visual checks without OS permissions, drive the app with <code>TRUNQ_SCRIPT</code>:</p>
+      <div class="codeblock"><pre data-copyable><code>TRUNQ_SCRIPT="wait:3;run;wait:2;shot:/tmp/query.png;open:shop.orders;wait:2;shot:/tmp/table.png;quit" cargo run</code></pre></div>
+      <p>Steps: <code>wait:&lt;s&gt;</code>, <code>run</code>, <code>runall</code>, <code>dryrun</code>, <code>explain[:analyze]</code>, <code>sql:&lt;text&gt;</code> (separate statements with <code>;;</code>), <code>open:&lt;schema.table&gt;</code>, <code>tab:&lt;n&gt;</code>, <code>palette:&lt;query&gt;</code>, <code>health</code>, <code>newconn</code>, <code>connections</code>, <code>theme:light|dark</code>, <code>shot:&lt;file.png&gt;</code>, <code>quit</code>. Scripted runs never overwrite your saved workspace.</p>
+      <h3 id="releases">Releases</h3>
+      <ol class="steps">
+        <li>Bump <code>version</code> in <code>Cargo.toml</code> and add the notes to <code>CHANGELOG.md</code>.</li>
+        <li>Tag and push: <code>git tag v0.2.0 &amp;&amp; git push origin v0.2.0</code>.</li>
+        <li>GitHub Actions builds the macOS <code>.dmg</code>, Linux <code>.deb</code> and <code>.tar.gz</code>, and the Windows <code>.zip</code>, generates <code>SHA256SUMS.txt</code> and publishes the release.</li>
+      </ol>
+    </section>
+
+    <nav class="doc__end" aria-label="Next steps">
+      <a href="../#download"><span>Ready?</span><b>Download Trunq →</b></a>
+      <a href="https://github.com/IssamElNass/trunq/issues/new/choose"><span>Something missing?</span><b>Improve these docs →</b></a>
+    </nav>
+  </article>
+
+  <aside class="docs__toc" aria-label="On this page">
+    <p>On this page</p>
+    <nav data-toc></nav>
+  </aside>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot__inner">
+    <div class="foot__brand">
+      <img class="logo-on-dark" src="../assets/logo-light.png" alt="" width="22" height="24">
+      <img class="logo-on-light" src="../assets/logo-dark.png" alt="" width="22" height="24">
+      <span>Trunq</span>
+    </div>
+    <p class="foot__legal">MIT License · No cookies, no analytics, no third-party requests.</p>
+  </div>
+</footer>
+
+<div class="palette" data-palette hidden>
+  <div class="palette__backdrop" data-close-palette></div>
+  <div class="palette__panel" role="dialog" aria-modal="true" aria-label="Search the docs">
+    <div class="palette__search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="text" data-palette-input placeholder="Search the docs…" aria-label="Search" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
+      <kbd>esc</kbd>
+    </div>
+    <ul class="palette__list" id="palette-list" role="listbox" data-palette-list></ul>
+  </div>
+</div>
+
+<script>window.TRUNQ_ROOT = "../";</script>
+<script src="../faq.js" defer></script>
+<script src="../site.js" defer></script>
+<script src="../docs.js" defer></script>
+</body>
+</html>

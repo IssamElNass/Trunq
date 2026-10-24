@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Trunq
+GenericName=PostgreSQL Client
+Comment=A fast, native PostgreSQL client
+Exec=trunq %F
+Icon=trunq
+Terminal=false
+Categories=Development;Database;
+MimeType=application/sql;text/csv;
+Keywords=postgres;postgresql;sql;database;
+StartupWMClass=trunq

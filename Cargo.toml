@@ -1,0 +1,58 @@
+[package]
+name = "trunq"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A fast, native PostgreSQL client"
+license = "MIT"
+readme = "README.md"
+keywords = ["postgresql", "database", "sql", "client", "gui"]
+categories = ["database", "development-tools", "gui"]
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+bytes = "1.12.1"
+chrono = "0.4.45"
+directories = "6.0.0"
+eframe = { version = "0.37.0", features = ["persistence"] }
+egui = "0.37"
+egui_extras = "0.37.0"
+fallible-iterator = "0.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+keyring = "4.2.0"
+native-tls = "0.2.18"
+nucleo-matcher = "0.3.1"
+open = "5.4.4"
+parking_lot = "0.13.0"
+postgres-protocol = "0.6.12"
+rand = "0.10.3"
+rfd = "0.17.2"
+russh = { version = "0.63.1", default-features = false, features = ["ring", "rsa", "flate2"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+socket2 = "0.6.5"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros", "fs"] }
+tokio-native-tls = "0.3.1"
+ureq = "3.5.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"
+
+[package.metadata.deb]
+name = "trunq"
+maintainer = "Trunq contributors"
+section = "database"
+priority = "optional"
+extended-description = "Trunq is a fast, native PostgreSQL client with a virtualised data grid, SQL editor with autocompletion, lock diagnostics, migration safety checks and Microsoft Entra ID support for Azure."
+assets = [
+    ["target/release/trunq", "usr/bin/", "755"],
+    ["packaging/linux/trunq.desktop", "usr/share/applications/", "644"],
+    ["assets/app_icon.png", "usr/share/icons/hicolor/512x512/apps/trunq.png", "644"],
+    ["README.md", "usr/share/doc/trunq/README.md", "644"],
+]

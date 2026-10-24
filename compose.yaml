@@ -1,0 +1,14 @@
+services:
+  trunq:
+    build: .
+    image: ${TRUNQ_IMAGE:-trunq:local}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - trunq-data:/data
+    shm_size: 256mb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+volumes:
+  trunq-data:

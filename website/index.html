@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trunq: the fast, safe PostgreSQL app</title>
+  <meta name="description" content="Trunq is a free, open-source desktop app for PostgreSQL. It pages through huge tables and warns before risky schema changes. For macOS, Windows and Linux.">
+  <meta name="theme-color" content="#070B11">
+  <meta property="og:title" content="Trunq: the PostgreSQL app that has your back">
+  <meta property="og:description" content="Fast, free and open source. Paged results, native rendering and PostgreSQL safety tools.">
+  <meta property="og:image" content="assets/shots/query.webp">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem("trunq-theme") ||
+        (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.dataset.theme = t;
+      document.documentElement.classList.add("js");
+    })();
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar" data-bar>
+  <div class="bar__inner">
+    <a class="brand" href="./" aria-label="Trunq home">
+      <img class="brand__logo logo-on-dark" src="assets/logo-light.png" alt="" width="27" height="29">
+      <img class="brand__logo logo-on-light" src="assets/logo-dark.png" alt="" width="27" height="29">
+      <span>Trunq</span>
+    </a>
+    <nav class="bar__nav" aria-label="Primary">
+      <a href="#tour" data-spy="speed tour">Features</a>
+      <a href="#try" data-spy="try">Live demo</a>
+      <a href="docs/">Docs</a>
+      <a href="#faq" data-spy="faq">FAQ</a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CHANGELOG.md" rel="noopener">Changelog<svg class="ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
+    </nav>
+    <div class="bar__actions">
+      <button class="palette-trigger" type="button" data-open-palette aria-label="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="palette-trigger__label">Search</span>
+        <kbd data-mod>⌘</kbd><kbd>K</kbd>
+      </button>
+      <button class="icon-btn bar__desk-only" type="button" data-theme-toggle aria-label="Switch theme" data-tip="Switch theme">
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <a class="icon-btn bar__desk-only" href="https://github.com/IssamElNass/trunq" aria-label="Trunq on GitHub" data-tip="Source on GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>
+      </a>
+      <a class="btn btn--primary btn--sm bar__download" href="#download">Download</a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-menu" data-menu-btn>
+        <span class="menu-btn__icon" aria-hidden="true"><i></i><i></i></span>Menu
+      </button>
+    </div>
+  </div>
+  <div class="sheet" id="site-menu" data-menu hidden>
+    <nav class="sheet__nav" aria-label="Menu">
+      <a href="#tour" data-spy="speed tour"><b>Features</b><span>What Trunq does for you</span></a>
+      <a href="#try" data-spy="try"><b>Live demo</b><span>Try it in your browser</span></a>
+      <a href="docs/"><b>Docs</b><span>Install it and learn the ropes</span></a>
+      <a href="#faq" data-spy="faq"><b>FAQ</b><span>Quick answers to common questions</span></a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CHANGELOG.md" rel="noopener"><b>Changelog<svg class="ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></b><span>What's new in each release</span></a>
+    </nav>
+    <div class="sheet__foot">
+      <a class="btn btn--primary" href="#download" data-menu-close>Download Trunq</a>
+      <a class="btn btn--ghost" href="https://github.com/IssamElNass/trunq"><svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg> GitHub</a>
+      <button class="btn btn--ghost" type="button" data-theme-toggle><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg> Theme</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<svg class="trunk" data-trunk aria-hidden="true"><defs><linearGradient id="trunk-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00E0F0"/><stop offset=".5" stop-color="#1CB8F2"/><stop offset="1" stop-color="#0A6CFF"/></linearGradient></defs><path class="trunk__ghost"/><path class="trunk__ink"/><circle class="trunk__tip" r="5"/></svg>
+
+<!-- ───────────── Hero ───────────── -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero__top">
+    <h1 id="hero-title">The Postgres app that has <span class="grad-text">your back.</span></h1>
+    <div class="hero__side">
+      <p class="lede">
+        Trunq opens in an instant, glides through millions of rows, and stops risky changes
+        <em>before</em> they reach production. Free, open source, and made for people who'd rather not be paged.
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary btn--lg" href="#download">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
+          <span data-os-label>Download Trunq</span>
+        </a>
+        <a class="btn btn--ghost btn--lg" href="docs/">Read the docs</a>
+      </div>
+      <p class="hero__meta">macOS · Windows · Linux &nbsp;/&nbsp; no account &nbsp;/&nbsp; no tracking</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <figure class="unfold" data-unfold>
+      <div class="unfold__stage">
+        <div class="window">
+          <div class="window__bar" aria-hidden="true"><span class="lights"><i></i><i></i><i></i></span><span>Trunq</span></div>
+          <div class="window__body">
+            <img src="assets/shots/query.webp" alt="The Trunq app: a SQL editor on top and a results table below, with a sidebar listing databases." width="1600" height="1000" fetchpriority="high">
+            <span class="pin" style="--x: 52%; --y: 2%" data-pin="1">1</span>
+            <span class="pin" style="--x: 40%; --y: 10.8%" data-pin="2">2</span>
+            <span class="pin" style="--x: 62%; --y: 70%" data-pin="3">3</span>
+            <span class="pin" style="--x: 4%; --y: 98%" data-pin="4">4</span>
+          </div>
+        </div>
+      </div>
+      <svg class="unfold__lines" data-pin-lines aria-hidden="true"></svg>
+      <ol class="annotations">
+        <li data-for="1" data-side="right"><b>Find anything</b>Tables, views and commands, one shortcut away.</li>
+        <li data-for="2" data-side="left"><b>Try before you commit</b>Preview a change, then it's undone for you.</li>
+        <li data-for="3" data-side="right"><b>Never freezes</b>Rows keep coming as you scroll, millions of them.</li>
+        <li data-for="4" data-side="left"><b>Know where you are</b>Production can be red, everywhere, always.</li>
+      </ol>
+    </figure>
+  </div>
+</section>
+
+<!-- ───────────── Million rows ───────────── -->
+<section class="million" id="speed" aria-labelledby="million-title" data-trunk-stop>
+  <div class="wrap million__inner">
+    <div class="million__copy">
+      <p class="eyebrow">Speed you can feel</p>
+      <h2 id="million-title">A million rows.<br>Go on, fling it.</h2>
+      <p class="lede">This table really has 1,000,000 rows. Scroll it, drag it, or jump straight to the end. The native client fetches results in pages; this browser demo generates its rows locally. Query execution and transfer time depend on your database.</p>
+      <div class="million__actions">
+        <button class="btn btn--ghost" type="button" data-jump="end">Jump to row 1,000,000</button>
+        <button class="btn btn--ghost" type="button" data-jump="random">Surprise me</button>
+      </div>
+    </div>
+    <div class="million__table">
+      <div class="million__counter" aria-live="off"><span>row</span><b data-row-now>1</b><span>of 1,000,000</span></div>
+      <div class="vgrid" data-vgrid tabindex="0" role="region" aria-label="A table with one million rows. Use arrow keys or Page Up / Page Down to scroll.">
+        <div class="vgrid__head" aria-hidden="true"><span>#</span><span>customer</span><span>city</span><span>total</span><span>status</span></div>
+        <div class="vgrid__scroll" data-vgrid-scroll><div class="vgrid__spacer" data-vgrid-spacer></div><div class="vgrid__rows" data-vgrid-rows></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── Feature deck ───────────── -->
+<section class="deck-sec" id="tour" aria-labelledby="deck-title" data-trunk-stop>
+  <div class="wrap">
+    <header class="deck-head">
+      <p class="eyebrow">Everything, one app</p>
+      <h2 id="deck-title">Pick a card.</h2>
+    </header>
+    <div class="deck-layout">
+      <ol class="index" data-index>
+        <li><button type="button" data-card="0" aria-pressed="true"><i>01</i><span>Write queries faster</span><small>Suggestions that know your tables and columns, plus instant error hints.</small></button></li>
+        <li><button type="button" data-card="1" aria-pressed="false"><i>02</i><span>Edit like a spreadsheet</span><small>Change cells in place and review every edit before saving it all at once.</small></button></li>
+        <li><button type="button" data-card="2" aria-pressed="false"><i>03</i><span>Catch risky changes</span><small>A friendly stop sign before anything that could freeze a busy table.</small></button></li>
+        <li><button type="button" data-card="3" aria-pressed="false"><i>04</i><span>Get unstuck</span><small>When a query hangs, see who's in the way and clear it in one click.</small></button></li>
+        <li><button type="button" data-card="4" aria-pressed="false"><i>05</i><span>Check its health</span><small>One click finds the problems that usually cause outages, with the fix.</small></button></li>
+        <li><button type="button" data-card="5" aria-pressed="false"><i>06</i><span>Make a chart</span><small>Any result becomes a clear chart. No exporting, no spreadsheets.</small></button></li>
+        <li><button type="button" data-card="6" aria-pressed="false"><i>07</i><span>Drop in a CSV</span><small>Drag a file onto the window and Trunq works out the rest.</small></button></li>
+        <li><button type="button" data-card="7" aria-pressed="false"><i>08</i><span>Jump anywhere</span><small>Press <kbd data-mod>⌘</kbd><kbd>K</kbd> and type. That's it.</small></button></li>
+      </ol>
+      <div class="deck" data-deck aria-live="polite">
+        <img class="deck__card" src="assets/shots/query.webp" alt="SQL editor with suggestions and results" width="1600" height="1000">
+        <img class="deck__card" src="assets/shots/table.webp" alt="Editing a table like a spreadsheet" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/lint.webp" alt="A warning before a risky change" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/lock.webp" alt="Showing which session is blocking a query" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/health.webp" alt="Database health check results" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/chart.webp" alt="A chart made from query results" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/import.webp" alt="Importing a CSV file" width="1600" height="1000" loading="lazy">
+        <img class="deck__card" src="assets/shots/palette.webp" alt="Command palette searching tables" width="1600" height="1000" loading="lazy">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="explore-sec" id="explore" aria-labelledby="explore-title" data-trunk-stop>
+  <div class="wrap explore-layout">
+    <div>
+      <p class="eyebrow">See the relationships</p>
+      <h2 id="explore-title">Your schema,<br>connected.</h2>
+      <p class="lede">Follow foreign keys across your schema. Open a diagram from a database, schema or table, move things around, and export SVG or Mermaid.</p>
+      <p>Inspect indexes, constraints, triggers, roles and row security directly in the explorer. Find expensive statements with a ready-to-edit PostgreSQL statistics query.</p>
+      <div class="explore-actions">
+        <a class="btn btn--primary" href="docs/#relationships">Explore the tools →</a>
+        <a class="btn btn--ghost" href="docs/#docker">Run with Docker →</a>
+      </div>
+      <p class="explore-note">Native desktop for maximum speed. Optional Docker browser desktop for a portable workspace.</p>
+    </div>
+    <figure class="explore-shot">
+      <a href="docs/#relationships"><img src="assets/shots/erd.webp" alt="Trunq ER diagram of the shop schema with foreign-key connections." width="2880" height="1800" loading="lazy"></a>
+      <figcaption>Captured from the running client. <a href="docs/#performance">See the performance checks.</a></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ───────────── Try it ───────────── -->
+<section class="try" id="try" aria-labelledby="try-title" data-trunk-stop>
+  <div class="wrap try__inner">
+    <div class="try__copy">
+      <p class="eyebrow">Try it right here</p>
+      <h2 id="try-title">Go ahead,<br>make a mistake.</h2>
+      <p class="lede">Three classic ways to break a live database. Pick one, press <b>Run</b>, and let Trunq catch you. It all runs in your browser, so nothing real gets hurt.</p>
+      <div class="stamps" aria-label="Mistakes caught">
+        <button type="button" class="stamp" data-stamp="lock" data-try="index"><span class="stamp__ring">Freeze a table</span><span class="stamp__ink" aria-hidden="true">Caught</span></button>
+        <button type="button" class="stamp" data-stamp="mass" data-try="nowhere"><span class="stamp__ring">Update everyone</span><span class="stamp__ink" aria-hidden="true">Caught</span></button>
+        <button type="button" class="stamp" data-stamp="jam" data-try="blocked"><span class="stamp__ring">Get stuck</span><span class="stamp__ink" aria-hidden="true">Caught</span></button>
+      </div>
+      <p class="stamps__score" data-score aria-live="polite">0 of 3 caught. Click a stamp to start.</p>
+    </div>
+    <div class="console" id="console" aria-label="Trunq demo">
+      <div class="console__chrome">
+        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="console__conn" title="Production connections are colour-coded red"><span class="conn-swatch"></span>production</span>
+        <span class="console__sim">Simulated, safe to play with</span>
+      </div>
+      <div class="console__presets" role="tablist" aria-label="Scenarios">
+        <button role="tab" data-preset="select" aria-selected="true">Look up customers</button>
+        <button role="tab" data-preset="index" aria-selected="false">Speed up a table</button>
+        <button role="tab" data-preset="default" aria-selected="false">Add a column</button>
+        <button role="tab" data-preset="nowhere" aria-selected="false">Update everyone</button>
+        <button role="tab" data-preset="blocked" aria-selected="false">Get stuck</button>
+      </div>
+      <div class="console__toolbar">
+        <button class="tbtn tbtn--run" type="button" data-run>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Run <kbd data-mod>⌘</kbd><kbd>⏎</kbd>
+        </button>
+        <button class="tbtn" type="button" data-dry>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>Preview changes
+        </button>
+        <span class="console__status" data-status aria-live="polite">Ready</span>
+      </div>
+      <div class="editor">
+        <div class="editor__gutter" aria-hidden="true" data-gutter>1</div>
+        <div class="editor__area">
+          <pre class="editor__hl" aria-hidden="true"><code data-hl></code></pre>
+          <textarea class="editor__input" data-input spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="SQL editor. Press Command or Control plus Enter to run."></textarea>
+        </div>
+      </div>
+      <div class="console__out" data-out aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── The switch ───────────── -->
+<section class="flip" id="flip" aria-labelledby="flip-title" data-trunk-stop>
+  <div class="wrap flip__inner">
+    <header class="flip__head">
+      <h2 id="flip-title">A Tuesday, <span class="flip__word" data-flip-word>without</span> Trunq.</h2>
+      <button class="switch" type="button" role="switch" aria-checked="false" data-switch>
+        <span class="switch__label">Without</span>
+        <span class="switch__track"><span class="switch__thumb"></span></span>
+        <span class="switch__label">With</span>
+      </button>
+    </header>
+    <ol class="day">
+      <li style="--i:0"><time>09:00</time><span class="day__a">You open your database tool, then go get coffee while it loads.</span><span class="day__b">Trunq is open before your hand leaves the trackpad.</span></li>
+      <li style="--i:1"><time>10:30</time><span class="day__a">A big report freezes the app. You force-quit.</span><span class="day__b">A million rows scroll like ten.</span></li>
+      <li style="--i:2"><time>12:15</time><span class="day__a">Your update hangs. You stare at a spinner and guess.</span><span class="day__b">Trunq shows who's blocking you. One click and you're through.</span></li>
+      <li style="--i:3"><time>14:00</time><span class="day__a">A "small" change locks the orders table. Checkout goes down.</span><span class="day__b">Trunq warns you first and shows the safe way to do it.</span></li>
+      <li style="--i:4"><time>16:45</time><span class="day__a">You run a bulk update and hope for the best.</span><span class="day__b">You preview exactly what changes, then it's undone automatically.</span></li>
+      <li style="--i:5"><time>18:00</time><span class="day__a">The server is full of forgotten connections. Again.</span><span class="day__b">Every connection was closed for you when you left.</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ───────────── Receipt ───────────── -->
+<section class="bill" aria-labelledby="bill-title" data-trunk-stop>
+  <div class="wrap bill__inner">
+    <div class="bill__copy">
+      <p class="eyebrow">The fine print</p>
+      <h2 id="bill-title">What Trunq costs you.</h2>
+      <p class="lede">Nothing. Not your money, not your email, and not your data. It's open source under the MIT license, so you can read every line yourself.</p>
+      <a class="btn btn--ghost" href="https://github.com/IssamElNass/trunq">Read the source</a>
+    </div>
+    <div class="receipt" data-receipt>
+      <div class="receipt__paper">
+        <p class="receipt__shop">TRUNQ<br><small>native app for PostgreSQL</small></p>
+        <p class="receipt__meta"><span>ORDER #0001</span><span data-receipt-date></span></p>
+        <dl>
+          <div><dt>Price</dt><dd>$0.00</dd></div>
+          <div><dt>Account required</dt><dd>none</dd></div>
+          <div><dt>Tracking</dt><dd>0 bytes</dd></div>
+          <div><dt>Passwords kept in</dt><dd>your keychain</dd></div>
+          <div><dt>Leaked connections</dt><dd>0</dd></div>
+          <div><dt>Azure sign-ins</dt><dd>just once</dd></div>
+          <div><dt>Production colour</dt><dd class="red">red</dd></div>
+          <div><dt>Licence</dt><dd>MIT</dd></div>
+        </dl>
+        <p class="receipt__total"><span>TOTAL</span><span>$0.00</span></p>
+        <p class="receipt__thanks">Thank you for not being tracked.</p>
+        <div class="receipt__barcode" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── FAQ chat ───────────── -->
+<section class="ask" id="faq" aria-labelledby="faq-title" data-trunk-stop>
+  <div class="wrap ask__inner">
+    <div>
+      <p class="eyebrow">Questions</p>
+      <h2 id="faq-title">Ask away.</h2>
+      <p class="lede">The usual questions, answered. Browse by topic or just type. Every answer is also in <a href="docs/#faq">the docs</a>, and anything else can go <a href="https://github.com/IssamElNass/trunq/issues">on GitHub</a>.</p>
+    </div>
+    <div class="chat">
+      <div class="chat__thread" data-thread aria-live="polite">
+        <div class="bubble bubble--them"><img src="assets/app-icon.png" alt="" width="28" height="28"><span>Hi! Pick a question below, or type your own and I'll find the closest answer.</span></div>
+      </div>
+      <form class="chat__ask" data-ask role="search">
+        <input type="text" data-ask-input placeholder="Ask anything, e.g. &ldquo;ssh tunnel&rdquo; or &ldquo;is it free&rdquo;" aria-label="Ask a question" autocomplete="off">
+        <button type="submit" aria-label="Ask"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </form>
+      <div class="chat__topics" role="tablist" aria-label="Topics" data-topics></div>
+      <div class="chat__chips" data-chips aria-label="Questions"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── Download dock ───────────── -->
+<section class="download" id="download" aria-labelledby="download-title">
+  <div class="wrap download__inner">
+    <h2 id="download-title">Put it in your dock.</h2>
+    <div class="os-pick" role="radiogroup" aria-label="Your system" data-os-pick>
+      <button type="button" role="radio" aria-checked="true" data-os="mac">macOS</button>
+      <button type="button" role="radio" aria-checked="false" data-os="win">Windows</button>
+      <button type="button" role="radio" aria-checked="false" data-os="deb">Debian / Ubuntu</button>
+      <button type="button" role="radio" aria-checked="false" data-os="linux">Other Linux</button>
+    </div>
+    <div class="desk" data-desk data-os-view="mac">
+      <div class="desk__dock">
+        <i></i><i></i><i></i>
+        <a class="desk__app" href="https://github.com/IssamElNass/trunq/releases/latest" data-dl aria-label="Download Trunq">
+          <img src="assets/app-icon.png" alt="" width="72" height="72">
+        </a>
+        <i></i><i></i>
+      </div>
+    </div>
+    <a class="btn btn--primary btn--lg" href="https://github.com/IssamElNass/trunq/releases/latest" data-dl data-trunk-end>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
+      <span data-dl-label>Download for macOS</span>
+    </a>
+    <p class="download__file"><code data-dl-file>Trunq-&lt;version&gt;-macos-universal.dmg</code> · <span data-dl-req>macOS 11 or newer, Apple Silicon &amp; Intel</span></p>
+    <p class="download__more">Every release lists SHA-256 checksums. <a href="docs/#install">Install guide</a> · <a href="docs/#build">Build from source</a></p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__inner">
+    <div class="foot__brand">
+      <img class="logo-on-dark" src="assets/logo-light.png" alt="" width="22" height="24">
+      <img class="logo-on-light" src="assets/logo-dark.png" alt="" width="22" height="24">
+      <span>Trunq</span>
+    </div>
+    <nav class="foot__links" aria-label="Footer">
+      <a href="docs/">Docs</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/IssamElNass/trunq">GitHub</a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/IssamElNass/trunq/blob/main/CONTRIBUTING.md">Contribute</a>
+      <a href="https://github.com/IssamElNass/trunq/security/policy">Security</a>
+    </nav>
+    <p class="foot__legal">
+      MIT License · No cookies, no analytics, no third-party requests ·
+      PostgreSQL is a trademark of the PostgreSQL Community Association. Trunq is not affiliated with it.
+    </p>
+  </div>
+</footer>
+
+<div class="palette" data-palette hidden>
+  <div class="palette__backdrop" data-close-palette></div>
+  <div class="palette__panel" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette__search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="text" data-palette-input placeholder="Search pages, docs, downloads…" aria-label="Search" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
+      <kbd>esc</kbd>
+    </div>
+    <ul class="palette__list" id="palette-list" role="listbox" data-palette-list></ul>
+  </div>
+</div>
+
+<script>window.TRUNQ_ROOT = "";</script>
+<script src="faq.js" defer></script>
+<script src="site.js" defer></script>
+<script src="home.js" defer></script>
+</body>
+</html>

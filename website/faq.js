@@ -1,0 +1,99 @@
+// Every FAQ question lives here. The home page chat and the docs FAQ section are both built from
+// this list, so adding a question is one entry. In answers, {docs:anchor} becomes a link to that docs
+// section and {repo} the GitHub repository; keep answers short, friendly and true to what Trunq does today.
+
+window.TRUNQ_FAQ = {
+  topics: [
+    ["basics", "Basics"],
+    ["safety", "Safety"],
+    ["connect", "Connecting"],
+    ["privacy", "Privacy & data"],
+    ["help", "Troubleshooting"],
+    ["community", "Community"],
+  ],
+  items: [
+    { id: "docker", k: "container dockerhub docker hub compose novnc browser publish", topic: "basics", q: "Can I run Trunq with Docker?",
+      a: "Yes. Run docker compose up --build -d and open localhost:8080/vnc.html. It is the native app in a browser desktop, with a persistent workspace volume. Keep the provided loopback port binding: the desktop has no built-in authentication. See {docs:docker}. Native releases avoid desktop-streaming overhead." },
+    { id: "erd", k: "schema diagram relations foreign keys mermaid svg", topic: "basics", q: "Can I view an ER diagram?",
+      a: "Yes. Right-click a database, schema or table and choose ER diagram, or find it in the command palette. Pan, zoom, drag tables and export SVG or Mermaid. See {docs:relationships}." },
+    // ── basics
+    { id: "free", k: "price pricing cost costs money paid licence license commercial", topic: "basics", q: "Is Trunq really free?",
+      a: "Yes, completely. Trunq is open source under the MIT license. Use it at home or at work, on as many machines as you like. There's no paid tier." },
+    { id: "account", k: "signup register login licence key", topic: "basics", q: "Do I need an account?",
+      a: "No. Download it, open it and connect. There's no sign-up, no login and no licence key." },
+    { id: "systems", k: "windows linux macos mac ubuntu debian fedora install requirements apple silicon intel arm", topic: "basics", q: "Will it run on my computer?",
+      a: "Very likely. Trunq runs on macOS 11 or newer (Apple Silicon and Intel), Windows 10 and 11 (64-bit), and 64-bit Linux, with a .deb package for Debian and Ubuntu and a tarball for everything else." },
+    { id: "versions", k: "postgres postgresql 12 13 14 15 16 17 18 version old", topic: "basics", q: "Which PostgreSQL versions are supported?",
+      a: "PostgreSQL 13 and newer. The CI protocol-test matrix covers versions 13 through 18. PostgreSQL 13 is retained for compatibility; it is no longer maintained upstream." },
+    { id: "pgadmin", k: "dbeaver datagrip alternative compare comparison vs", topic: "basics", q: "How is Trunq different from pgAdmin?",
+      a: "Trunq is a single native app rather than a web server with a browser UI. It pages through large results, shows who is blocking your query, warns you before risky changes and lets you preview updates before they're saved." },
+    { id: "fast", k: "speed performance slow quick native electron", topic: "basics", q: "Why is it so fast?",
+      a: "Trunq is written in Rust and drawn directly by your graphics card, with no browser, Electron or Java underneath. Results arrive in pages as you scroll, so browsing a large table starts with a small first page. Query execution time still depends on the database." },
+    { id: "other-db", k: "mysql mariadb sqlite sql server oracle mongodb", topic: "basics", q: "Does it work with MySQL or other databases?",
+      a: "No. Trunq is made just for PostgreSQL, so it can go deep: locks, query plans, health checks and Postgres-specific safety checks." },
+    { id: "theme", k: "dark mode light theme appearance", topic: "basics", q: "Is there a dark mode?",
+      a: "Yes. Trunq has light and dark themes, and so does this website. Use the sun or moon button at the top." },
+    { id: "update", k: "upgrade new version latest auto", topic: "basics", q: "How do I update to a new version?",
+      a: 'Download the newest version from the <a href="{repo}/releases/latest">Releases page</a> and replace the old app. Your connections and settings are kept in a separate folder, so nothing is lost.' },
+
+    // ── safety
+    { id: "prod", k: "production safe", topic: "safety", q: "Is it safe to use on production?",
+      a: "That's what it's built for. Trunq warns you before risky changes, asks before deleting or updating everything, lets you preview changes and can make connections read-only. It never runs a fix without asking." },
+    { id: "risky", k: "lock migration index alter ddl", topic: "safety", q: "What counts as a \"risky change\"?",
+      a: "Anything that could freeze a busy table: building an index the slow way, changing a column's type, adding a NOT NULL rule or a foreign key, or a full VACUUM. Trunq explains what would happen and shows the safe way to do it, often with a one-click fix." },
+    { id: "nowhere", k: "without where mass everything all rows delete", topic: "safety", q: "What if I forget the WHERE in an UPDATE or DELETE?",
+      a: "Trunq stops and asks before running it, so \"update everyone\" never happens by accident. It does the same for DROP and TRUNCATE." },
+    { id: "dryrun", k: "preview test rollback undo", topic: "safety", q: "What is a dry run?",
+      a: "A dry run runs your INSERT, UPDATE or DELETE inside a transaction, shows exactly which rows would change, then always undoes it. Nothing is saved. Shortcut: ⌥⌘⏎ (Ctrl+Alt+Enter on Windows and Linux)." },
+    { id: "readonly", k: "read only readonly colour color timeout", topic: "safety", q: "Can I make a connection read-only?",
+      a: "Yes. Mark any connection as read-only and Trunq opens it in read-only mode. You can also give each connection a colour (production in red, for example) and a statement timeout." },
+    { id: "stuck", k: "blocked block lock hang hanging slow wait waiting frozen", topic: "safety", q: "My query is stuck. Can Trunq help?",
+      a: "Yes. If a query waits longer than 1.5 seconds, Trunq shows what it's waiting for and which session is blocking it. You can cancel that session's query or end the session in one click." },
+    { id: "leaks", k: "connections leak idle pool", topic: "safety", q: "Will Trunq leave connections open on my server?",
+      a: "No. Every connection belongs to a tab and closes with it, and idle tabs disconnect after 15 minutes and reconnect when you come back. The status bar shows every open connection, and each one is clearly named on the server." },
+    { id: "health", k: "checkup audit bloat index wraparound", topic: "safety", q: "What does the health check look for?",
+      a: "The problems behind real outages: IDs about to run out, transaction-ID wraparound, replication slots filling the disk, missing or unused indexes, bloated tables and long-running transactions. Each finding comes with a fix for you to review. Nothing runs automatically." },
+
+    // ── connecting
+    { id: "azure", k: "entra microsoft aad active directory", topic: "connect", q: "Does it work with Azure?",
+      a: "Yes, including Microsoft Entra ID sign-in. Sign in once with your browser, a device code or the Azure CLI, and Trunq refreshes your access for you. Azure global, Azure China (21Vianet) and Azure US Government are all supported." },
+    { id: "cloud", k: "aws rds aurora supabase neon gcp google cloud sql heroku digitalocean hosted remote", topic: "connect", q: "Can I connect to databases in the cloud?",
+      a: "If you can reach it with a host, user and password (or a postgres:// URL), Trunq can connect, with encryption from \"disable\" up to \"verify-full\". Azure Entra ID is the only cloud-specific sign-in built in today." },
+    { id: "ssh", k: "tunnel bastion jump host key agent", topic: "connect", q: "Can I connect through an SSH tunnel or bastion host?",
+      a: "Yes. Add an SSH tunnel to a connection and sign in with your ssh-agent, a key file or a password. All tabs for that server share a single SSH login, and host keys are checked against your known_hosts file." },
+    { id: "url", k: "connection string uri pgpass socket", topic: "connect", q: "Can I paste a connection URL?",
+      a: "Yes. Paste something like postgres://user@host:5432/db?sslmode=require and Trunq fills in the form for you. It also reads ~/.pgpass and supports Unix sockets." },
+
+    // ── privacy & data
+    { id: "data", k: "telemetry tracking analytics privacy spy collect", topic: "privacy", q: "Does Trunq send my data anywhere?",
+      a: "Never. Trunq has no telemetry. It only connects to your databases, your SSH servers and, if you use Entra ID, Microsoft's sign-in service." },
+    { id: "passwords", k: "password keychain credentials secret token", topic: "privacy", q: "Where are my passwords stored?",
+      a: "In your operating system's keychain: macOS Keychain, Windows Credential Manager or the Secret Service on Linux. Never in plain files. Azure access tokens are kept in memory only." },
+    { id: "settings", k: "config folder reset delete history", topic: "privacy", q: "Where are my settings, and how do I reset Trunq?",
+      a: 'Connections, settings and query history live in one folder (the exact path for each system is in {docs:storage}). Delete that folder to start fresh.' },
+    { id: "export", k: "download csv json markdown excel copy", topic: "privacy", q: "Can I export my results?",
+      a: "Yes. Copy or export any result as CSV, TSV, JSON, Markdown, SQL INSERT statements or an IN (…) list. You can also turn it into a chart with one click." },
+    { id: "import", k: "csv tsv upload load spreadsheet", topic: "privacy", q: "Can I import a CSV file?",
+      a: "Yes. Drag the file onto the window. Trunq works out the columns and their types, then loads everything in one go, either into a new table or an existing one." },
+
+    // ── troubleshooting
+    { id: "mac", k: "gatekeeper unidentified developer open blocked", topic: "help", q: "macOS says the app \"can't be opened\".",
+      a: "Right-click Trunq.app and choose Open, just once. After that it opens normally." },
+    { id: "keychain", k: "prompt password allow", topic: "help", q: "macOS keeps asking for keychain access.",
+      a: "Click \"Always Allow\" once, and Trunq can read its saved passwords from then on." },
+    { id: "blank", k: "white empty gpu vm virtual machine render", topic: "help", q: "The app window is blank.",
+      a: "This can happen on older graphics cards or in virtual machines. Start Trunq with WGPU_BACKEND=gl to switch to OpenGL." },
+    { id: "auth-failed", k: "password authentication failed login error", topic: "help", q: "I get \"password authentication failed\".",
+      a: "Type the password in the field that appears in the sidebar or above the editor. Trunq remembers it for the session and saves it to your keychain if \"Save in keychain\" is on." },
+    { id: "aadsts", k: "azure error entra sign in", topic: "help", q: "Azure shows an AADSTS error.",
+      a: "Check the tenant, check that your account (or its group) has access on the server, and check that the right Azure cloud is selected. If your organisation blocks the browser sign-in, try Device code." },
+
+    // ── community
+    { id: "bug", k: "issue problem crash report", topic: "community", q: "I found a bug. Where do I report it?",
+      a: 'Please <a href="{repo}/issues/new/choose">open an issue on GitHub</a>. Steps to reproduce and your system help a lot.' },
+    { id: "security", k: "vulnerability cve exploit security", topic: "community", q: "How do I report a security issue?",
+      a: 'Please don\'t open a public issue. Use GitHub\'s private reporting under the repository\'s <a href="{repo}/security">Security tab</a>, and you\'ll hear back within a few days.' },
+    { id: "contribute", k: "help pull request pr code develop", topic: "community", q: "Can I contribute?",
+      a: 'Yes, please! Bug reports, ideas, docs and code are all welcome. Start with the <a href="{repo}/blob/main/CONTRIBUTING.md">contributing guide</a>. For bigger changes, open an issue first.' },
+  ],
+};

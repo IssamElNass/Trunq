@@ -1,0 +1,203 @@
+name: Release
+
+# Push a tag like `v0.2.0` (matching the version in Cargo.toml) to build
+# installers for every platform and publish them as a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - id: v
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG does not match Cargo.toml version $VERSION"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+
+  macos:
+    name: macOS (universal)
+    needs: meta
+    runs-on: macos-latest
+    env:
+      HAS_SIGNING: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build both architectures
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/trunq \
+            target/aarch64-apple-darwin/release/trunq \
+            target/x86_64-apple-darwin/release/trunq
+      - name: Bundle Trunq.app and .dmg
+        env:
+          TRUNQ_BINARY: target/universal/trunq
+        run: ./scripts/bundle-macos.sh --dmg
+      # Optional: sign & notarize when Apple credentials are configured as secrets
+      # (APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+      #  APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD).
+      - name: Sign & notarize
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KEYCHAIN=build.keychain
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > cert.p12
+          security create-keychain -p ci "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p ci "$KEYCHAIN"
+          security import cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN"
+          APP=target/release/bundle/Trunq.app
+          codesign --force --deep --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$APP"
+          rm -f target/release/bundle/Trunq.dmg
+          hdiutil create -volname Trunq -srcfolder "$APP" -ov -format UDZO target/release/bundle/Trunq.dmg
+          codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp target/release/bundle/Trunq.dmg
+          xcrun notarytool submit target/release/bundle/Trunq.dmg --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple target/release/bundle/Trunq.dmg
+      - name: Collect
+        run: |
+          mkdir -p dist
+          cp target/release/bundle/Trunq.dmg "dist/Trunq-${{ needs.meta.outputs.version }}-macos-universal.dmg"
+          (cd target/release/bundle && zip -qry "../../../dist/Trunq-${{ needs.meta.outputs.version }}-macos-universal.app.zip" Trunq.app)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  linux:
+    name: Linux (x86_64)
+    needs: meta
+    runs-on: ubuntu-22.04 # older glibc = runs on more distributions
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libxkbcommon-dev libwayland-dev
+      - run: cargo build --release --locked
+      - name: Package .tar.gz
+        run: |
+          NAME="trunq-${{ needs.meta.outputs.version }}-linux-x86_64"
+          mkdir -p "dist/$NAME"
+          cp target/release/trunq README.md LICENSE packaging/linux/trunq.desktop "dist/$NAME/"
+          cp assets/app_icon.png "dist/$NAME/trunq.png"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          rm -rf "dist/$NAME"
+      - name: Package .deb
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build --output "dist/trunq_${{ needs.meta.outputs.version }}_amd64.deb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    name: Windows (x86_64)
+    needs: meta
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+      - name: Package .zip
+        shell: pwsh
+        run: |
+          $name = "Trunq-${{ needs.meta.outputs.version }}-windows-x86_64"
+          New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
+          Copy-Item target/release/trunq.exe "dist/$name/Trunq.exe"
+          Copy-Item README.md, LICENSE "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          Remove-Item -Recurse -Force "dist/$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  publish:
+    name: Publish GitHub Release
+    needs: [meta, macos, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Release notes from CHANGELOG
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[?"v"\\]?" {found=1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Release $VERSION" > notes.md; fi
+          cat >> notes.md <<'EOF'
+
+          ### Downloads
+          | Platform | File |
+          |---|---|
+          | macOS (Apple Silicon & Intel) | `Trunq-*-macos-universal.dmg` |
+          | Linux (x86_64) | `trunq_*_amd64.deb` or `trunq-*-linux-x86_64.tar.gz` |
+          | Windows (x86_64) | `Trunq-*-windows-x86_64.zip` |
+
+          Verify downloads with `SHA256SUMS.txt`.
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Trunq ${{ needs.meta.outputs.version }}
+          body_path: notes.md
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          files: dist/*
