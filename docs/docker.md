@@ -34,7 +34,7 @@ docker build --target native -t trunq:native .
 
 ## Publish manually
 
-Replace `YOUR_NAMESPACE` with your Docker Hub account or organization:
+Replace `YOUR_NAMESPACE` with your Docker Hub account or organization. Check out the stable release tag you are publishing (for example, `v0.1.0`) before building its version tag and `latest`:
 
 ```sh
 docker login
@@ -45,9 +45,11 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 Emulation is required to build a foreign architecture on a single machine. The GitHub workflow configures QEMU automatically. Manual `--push` publishes immediately; run your local image and check the desktop first.
 
+For a development image, build from `main` and use `YOUR_NAMESPACE/trunq:dev` instead of the release tags above.
+
 ## Publish with GitHub Actions
 
-[The Docker workflow](../.github/workflows/docker.yml) builds and smoke-tests a desktop image on pull requests, version tags and manual runs. It verifies the HTTP endpoint and that the client process remains alive. Publishing depends on that test.
+[The Docker workflow](../.github/workflows/docker.yml) builds and smoke-tests a desktop image on pull requests, pushes to `main`, version tags and manual runs. It verifies the HTTP endpoint and that the client process remains alive. Publishing depends on that test.
 
 Set repository **Settings → Secrets and variables → Actions**:
 
@@ -56,6 +58,19 @@ Set repository **Settings → Secrets and variables → Actions**:
 | Variable | `DOCKERHUB_USERNAME` | Docker Hub account / namespace |
 | Secret | `DOCKERHUB_TOKEN` | Access token with push permission to that repository |
 
-Push a version tag such as `v0.1.0`, or run **Docker → Run workflow → publish**. Without the namespace, the publish job is skipped. Tags produce version and major/minor image tags; stable version tags also update `latest`. Manual runs publish a commit tag. Prereleases do not update `latest`. Both amd64 and arm64 are built for publication; the pre-publication runtime smoke test currently runs on amd64.
+Successful workflow runs for pushes to `main` publish `dev` and a `sha-<commit>` tag. To publish the current `main` without a new commit, choose **Actions → Docker → Run workflow**, select `main`, and enable **publish**. Leave **publish** disabled to run the smoke test only.
+
+Docker image tags identify separate channels:
+
+| Tag | Contents |
+|---|---|
+| `latest` | The most recently published stable release |
+| `0.1.0` | A specific release, built from Git tag `v0.1.0` |
+| `dev` | The newest successfully published development build of `main` |
+| `sha-<commit>` | An image identified by its source commit |
+
+`latest` is a mutable Docker tag. The workflow updates it when publishing a stable version tag; it is independent of GitHub's latest-release designation. Nightly desktop downloads are separate scheduled snapshots of the development branch.
+
+Version tags such as `v0.1.0` publish version and major/minor image tags plus a commit tag. Stable version tags also update `latest`; prereleases and branch builds leave it unchanged. Manual runs follow the selected ref: `main` updates `dev`, a stable version tag updates the release tags, and other branches publish only a commit tag. Without the namespace, the publish job is skipped. Both amd64 and arm64 are built for publication; the pre-publication runtime smoke test currently runs on amd64.
 
 No image has been pushed as part of the local implementation. A Docker Hub namespace and token must be configured before publication.
