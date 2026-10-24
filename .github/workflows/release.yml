@@ -194,7 +194,7 @@ jobs:
 
           Verify downloads with `SHA256SUMS.txt`.
           EOF
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: Trunq ${{ needs.meta.outputs.version }}
