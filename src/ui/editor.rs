@@ -50,6 +50,7 @@ impl EditorState {
         let c = start + with.len();
         self.pending_cursor = Some(c..c);
         self.error = None;
+        self.completion = None;
     }
 
     pub fn set_text(&mut self, text: String) {
@@ -62,6 +63,9 @@ impl EditorState {
     fn accept_completion(&mut self, index: usize) -> bool {
         let Some(completion) = self.completion.take() else { return false };
         let Some(item) = completion.items.get(index) else { return false };
+        if self.text.get(completion.replace.clone()).is_none() {
+            return false;
+        }
         let mut insert = item.insert.clone();
         // Mouse and keyboard acceptance must both preserve an existing "(".
         if insert.ends_with('(') && self.text[completion.replace.end..].starts_with('(') {
@@ -412,6 +416,9 @@ pub fn sql_editor(
     if out.changed {
         st.error = None;
     }
+    if tab_action.is_some() || toggle_comment || duplicate_line {
+        st.completion = None;
+    }
     out
 }
 
@@ -599,6 +606,46 @@ mod tests {
             assert!(state.completion.is_none());
             assert!(state.request_focus);
         }
+    }
+
+    #[test]
+    fn completion_is_discarded_after_external_replacement() {
+        let mut state = EditorState::new(Id::unique("replacement-completion"), "SELECT cou".into());
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        assert!(state.completion.is_some());
+        state.replace_range(0..state.text.len(), "SELECT 1");
+        assert!(state.completion.is_none());
+    }
+
+    #[test]
+    fn stale_completion_range_does_not_panic() {
+        let mut state = EditorState::new(Id::unique("stale-completion"), "SELECT cou".into());
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        state.text = "短".into();
+        assert!(!state.accept_completion(0));
+        assert_eq!(state.text, "短");
+    }
+
+    #[test]
+    fn comment_shortcut_closes_the_old_completion() {
+        let ctx = egui::Context::default();
+        theme::install_fonts(&ctx);
+        let mut state = EditorState::new(Id::unique("comment-completion"), "SELECT cou".into());
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            sql_editor(ui, &mut state, None, true, true, false, false);
+        });
+        output.textures_delta.clear();
+        state.completion = complete::complete(&state.text, state.text.len(), None, true, false);
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::ModifiersChanged(Modifiers::COMMAND));
+        input.events.push(egui::Event::Key { key: Key::Slash, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
+        let mut output = ctx.run_ui(input, |ui| {
+            ui.memory_mut(|memory| memory.request_focus(state.id.with("text")));
+            sql_editor(ui, &mut state, None, true, true, false, false);
+        });
+        output.textures_delta.clear();
+        assert_eq!(state.text, "-- SELECT cou");
+        assert!(state.completion.is_none());
     }
 
     #[test]

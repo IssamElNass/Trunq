@@ -29,6 +29,7 @@ All notable changes to Trunq are documented here. The format follows
 - SQL highlighting refreshes glyphs after font-atlas changes instead of reusing stale meshes that display unrelated characters; syntax caches discard earlier edits.
 - Comment toggling handles mixed Unicode indentation without slicing inside a character.
 - Mouse and keyboard completion share parenthesis handling, report text changes and respect read-only editors.
+- Editor commands and text replacements dismiss outdated completions; stale completion ranges cannot crash the editor.
 - Built-in SQL functions are suggested before a connection catalog has loaded.
 - Documentation navigation preserves the scroll destination, search can be closed with keyboard or touch, and theme switching works when browser storage is unavailable.
 - Website code copying preserves the displayed text and selects it when clipboard access is unavailable; build tabs support arrow keys, Home and End.
