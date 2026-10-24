@@ -77,11 +77,11 @@ To rebuild an existing tag, run **Actions → Release → Run workflow** from th
 | Identity | `nightly-YYYYMMDD-<run-number>-g<short-sha>` |
 | Checks | Unit tests in each platform job, followed by all platform release builds and packaging |
 | Downloads | Same platform formats as stable, plus `BUILD_INFO.txt` and `SHA256SUMS.txt` |
-| Publication | A separate immutable prerelease; it does not become the latest stable release |
+| Publication | A separate dated prerelease; it does not become the latest stable release |
 | Debian version | `<base-version>~nightly.<date>.<run>+g<sha>`, which sorts before the matching stable version |
 | Actions artifact retention | 7 days for snapshots; release assets remain on the GitHub Release |
 
-The schedule starts only once this workflow is on the default branch. GitHub scheduled events may be delayed. Each successful run has a distinct tag, so the workflow does not move an older nightly tag or delete previous releases. Failed builds leave previous published snapshots available.
+The schedule starts only once this workflow is on the default branch. GitHub scheduled events may be delayed. New workflow runs have distinct snapshot tags, so the workflow does not move older nightly tags or delete previous releases. Re-running the same Actions run with the same snapshot identity can replace its release assets; start a new manual dispatch when you need a separate snapshot. Failed platform builds leave previous published snapshots available.
 
 The app's displayed version remains the Cargo source version. Identify a snapshot from its filename, release commit and `BUILD_INFO.txt`. Nightlies are application snapshots built with the stable Rust toolchain; they do not require Rust nightly. Unit tests without database/SSH fixtures do not exercise those integrations; the separate CI protocol matrix covers PostgreSQL 13–18.
 

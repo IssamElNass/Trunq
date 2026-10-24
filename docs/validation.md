@@ -27,7 +27,9 @@ The SSH test still returns early without its external fixture. Real SSH, Azure, 
 - `actionlint` 1.7.7 accepted the updated Release workflow. A CLI metadata run produced a dated nightly identity with an exact source SHA, and `dpkg --compare-versions` confirmed the nightly sorts before its matching stable version.
 - The twelve Chromium browser groups passed after expanding the handbook, FAQ, settings and nightly documentation.
 
-The Release workflow builds packaging previews on pull requests and skips publication there. A scheduled nightly starts only after the workflow is on the default branch; local metadata/lint checks do not establish that a release was published. The PR's Actions runs provide the platform packaging results.
+The [Release preview for source revision 2b87ab5](https://github.com/IssamElNass/Trunq/actions/runs/40087506934) subsequently passed: source/channel resolution, macOS universal, Linux x86_64, Windows x86_64 and package assembly. Assembly checked the presence of all five platform archives/installers and produced build provenance and checksums. Its `release-bundle` Actions artifact contains the reviewable downloads; publication was skipped on the pull request.
+
+A scheduled nightly starts only after the workflow is on the default branch. This preview did not publish a public nightly release. The same revision's ordinary CI completed all eleven jobs successfully, and its Docker desktop smoke test passed.
 
 ## 23 October 2026: earlier validation
 
