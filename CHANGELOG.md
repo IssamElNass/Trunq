@@ -7,6 +7,10 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Cloud-neutral token commands with Azure CLI, AWS RDS and Google Cloud presets; native Azure service-principal secrets from environment variables.
+- Per-profile PEM CA bundles and TLS client certificates with PKCS #8 keys.
+- Database tools for extension inventory/update SQL, pg_cron job templates, audit/security inspection, foreign data and replication; tree groups for extensions, event triggers and publications.
+- Cloud-authentication and administration guides with provider prerequisites, audit-log setup and explicit feature gaps.
 - Daily default-branch nightly prereleases with macOS, Windows and Linux packages, checksums, source provenance and manual triggering; packaging changes are built on pull requests without publication.
 - Connection/TLS/password reference, settings and workspace backup guide, practical query and diagnostic workflows, and expanded troubleshooting.
 - Task-based documentation index, separate installation, usage, feature and developer guides, and a shorter project README.
@@ -20,6 +24,11 @@ All notable changes to Trunq are documented here. The format follows
 - PostgreSQL 18 in the protocol test matrix.
 
 ### Fixed
+- Chart frames reuse sorted/parsed data and pixel-decimated geometry; timestamp offsets, finite-number handling and extrema order are corrected.
+- Azure interactive token caches distinguish configured users; CLI authentication respects account changes and has bounded execution.
+- TLS negotiation and local sign-in redirect reads cannot wait indefinitely; malformed Unicode OAuth percent escapes do not panic.
+- URL import clears a previous endpoint's password when the identity changes.
+- Sidebar search includes schema types, type-only public schemas remain visible, and publication operations include TRUNCATE.
 - Failed or cancelled exports preserve an existing destination; successful exports replace it after staging in the same directory.
 - CSV exports distinguish empty strings from NULL, and SQL exports quote non-finite numeric values.
 - Failed table saves roll back their changes and recover the connection; saves inside a user transaction use savepoints.

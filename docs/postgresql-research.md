@@ -28,3 +28,22 @@ These are research candidates, not implemented features. Client rendering, netwo
 - [EXPLAIN](https://www.postgresql.org/docs/18/sql-explain.html): execution, buffers and serialization.
 - [Docker multi-platform GitHub Actions](https://docs.docker.com/build/ci/github-actions/multi-platform/): Buildx, emulation and registry login.
 - [Docker test before push](https://docs.docker.com/build/ci/github-actions/test-before-push/): smoke-test the desktop before publishing.
+
+## Cloud-neutral administration follow-up (25 October 2026)
+
+The client now separates token acquisition from PostgreSQL transport. Existing Entra browser/device/CLI flows gain per-user cache isolation; a native client-secret flow and a bounded external-helper contract cover application identities and multiple cloud CLIs. CA bundles/client certificates support servers whose trust/authentication policy differs from a public-CA password deployment. No provider SDK or control-plane credential is required for ordinary PostgreSQL browsing. [Implementation and exact limits](cloud-authentication.md).
+
+Database tools expose existing cached extension/event-trigger/publication metadata and request further administrative queries only on demand. This avoids adding background catalog polling or privileged extension-version scans to every connection. Install/update/job changes open reviewable SQL. Provider allowlists, preload settings, server binaries and disruptive restarts remain explicit operational work. [Provider matrix, job and audit workflows](administration.md).
+
+| Next capability | Value | Design requirement |
+|---|---|---|
+| Effective privilege report | Explain why a user can access an object | Account for ownership, PUBLIC, direct/inherited membership, SET ROLE rules, default ACLs, SECURITY DEFINER and RLS; role attributes alone are insufficient |
+| Extension/job editor | Reduce copying SQL while retaining review | Discover installed function signatures/versions and provider constraints; preserve job ownership and bound values |
+| Replication dashboard | Catch retained WAL and failed subscriptions | Use version-specific columns/permissions; never display stored connection secrets by default; distinguish lag from inactive slots |
+| More object editors | Types/domains, collations, languages, operators, casts, text search and extended statistics | Show dependencies and complete DDL before mutation; avoid treating provider admin roles as real superusers |
+| Audit log viewer | Correlate database and control-plane events | Separate read-only log credentials from database roles, expose retention/gaps and support provider adapters; local query history cannot substitute |
+| Connection startup profile | Measure CLI, SSH, TLS and catalog costs separately | Preserve account selection and cancellation; do not introduce a shared PostgreSQL pool that leaks transactions/temp state between tabs |
+
+The graph preparation cache is an independent client improvement: sorted X values, finite Y values and pixel-bucket extrema are reused until data, axes, kind or width changes. This avoids repeated parsing/sorting of loaded results during mouse movement. The first preparation still costs O(rows × series), sorting costs O(rows log rows), and cached chart values consume additional RAM. See [measured checks](performance.md); this does not accelerate server execution or network transfer.
+
+Sources for the provider comparison: [Entra PostgreSQL setup](https://learn.microsoft.com/en-us/azure/postgresql/security/security-entra-configure), [Entra application credentials](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow), [RDS IAM](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html), [Cloud SQL IAM](https://docs.cloud.google.com/sql/docs/postgres/iam-logins), [Azure extensions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-considerations), [RDS pg_cron](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL_pg_cron.html), [Cloud SQL extensions](https://docs.cloud.google.com/sql/docs/postgres/extensions), [pgAudit](https://github.com/pgaudit/pgaudit). These documents establish available mechanisms; local tests do not certify provider integrations.

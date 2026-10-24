@@ -86,6 +86,7 @@
         <a href="#connecting">Connection options</a>
         <a href="#ssh">SSH tunnels</a>
         <a href="#azure">Azure &amp; Entra ID</a>
+        <a href="#cloud-auth">Cloud authentication</a>
         <p>Using Trunq</p>
         <a href="#editor">Writing queries</a>
         <a href="#results">Working with results</a>
@@ -93,6 +94,7 @@
         <a href="#charts">Charts</a>
         <a href="#import">Importing CSV files</a>
         <a href="#relationships">ER diagrams &amp; metadata</a>
+        <a href="#administration">Extensions, jobs &amp; audits</a>
         <a href="#docker">Docker &amp; Docker Hub</a>
         <a href="#performance">Performance</a>
         <a href="#navigation">Finding your way around</a>
@@ -199,7 +201,7 @@ psql -d shop -f dev/sample.sql</code></pre></div>
           <tr><td><code>verify-full</code></td><td>Required</td><td>Certificate trust and database hostname</td></tr>
         </tbody>
       </table></div>
-      <p><code>require</code> encrypts but does not verify the server's identity. A private CA needs trust configured in the platform store; the dialog has no per-profile CA-file or client-certificate selector. Inside SSH, the hostname checked is still the database Host. Local Unix sockets use socket permissions and PostgreSQL authentication rather than TLS negotiation.</p>
+      <p><code>require</code> encrypts but does not verify the server's identity. For provider/private CAs, set <b>Advanced → Root CA bundle</b> to a PEM file. Client certificate authentication supports PEM chains and unencrypted PKCS #8 keys; paths are saved, contents stay in their files. Use <code>verify-full</code> to validate the server. Inside SSH, the hostname checked is still the database Host. Local Unix sockets use socket permissions and PostgreSQL authentication rather than TLS negotiation.</p>
       <h3 id="password-sources">Passwords, URLs and pgpass</h3>
       <p>A supplied session password takes precedence over a saved keychain password, then Trunq tries the first matching entry in <code>~/.pgpass</code> or <code>PGPASSFILE</code>. Password-file fields are <code>host:port:database:user:password</code>; the first four support <code>*</code>, and literal colons/backslashes need escaping. Protect the file because its passwords are plaintext.</p>
       <p>URL import reads the user, password, host, port, database and <code>sslmode</code>. Other query parameters are not applied; set timeouts, read-only mode and SSH in the form. Percent-encode reserved characters and put IPv6 hosts in brackets. Editing a profile affects new sessions; reconnect open tabs to use its changes.</p>
@@ -241,14 +243,30 @@ psql -d shop -f dev/sample.sql</code></pre></div>
         </li>
         <li><b>Pick a sign-in method:</b>
           <ul>
-            <li><b>Interactive (browser):</b> opens the Microsoft sign-in page. After the first sign-in, the refresh token is kept in your keychain and new tokens are created silently for about 90 days.</li>
+            <li><b>Interactive (browser):</b> opens the Microsoft sign-in page. After the first sign-in, the refresh token is kept in your keychain and new tokens can be created silently until tenant policy requires another sign-in.</li>
             <li><b>Device code:</b> for machines without a browser (remote desktops, SSH). Trunq shows a code to enter at <code>microsoft.com/devicelogin</code> or the China equivalent.</li>
-            <li><b>Azure CLI:</b> reuses your <code>az login</code> session. For China, run <code>az cloud set --name AzureChinaCloud</code> first.</li>
+            <li><b>Azure CLI:</b> reuses your CLI login and respects external account changes at each new connection. For China, select the matching CLI cloud first.</li>
+            <li><b>Service principal:</b> supply an explicit tenant/application ID, PostgreSQL role and the name of a secret environment variable (default <code>AZURE_CLIENT_SECRET</code>). The secret value is not saved in the profile.</li>
           </ul>
         </li>
         <li><b>User:</b> your Entra user principal (for example <code>jane@contoso.com</code>) or the name of the Entra group or role that was granted access. Leave it empty to use the signed-in account.</li>
         <li><b>Optional:</b> a <b>Tenant</b> (<code>contoso.onmicrosoft.com</code> or a tenant ID). Under <i>Advanced</i> you can set your own <b>client ID</b> if your organisation blocks the Azure CLI public client.</li>
       </ol>
+    </section>
+
+    <section>
+      <h2 id="cloud-auth">Cloud-neutral authentication</h2>
+      <p>Choose <b>Token command (any provider)</b> for a local helper that prints a short-lived PostgreSQL password/token. Presets cover Azure CLI, AWS RDS IAM and Google Cloud SQL IAM. Provider CLIs own login, SSO, managed identities and federation; sign in outside Trunq and configure the server's matching database role.</p>
+      <h3 id="token-helpers">Configure a token helper</h3>
+      <ol>
+        <li>Install the CLI/helper on the computer running Trunq and sign in with the intended account.</li>
+        <li>Select a preset or executable, with one argument per line. <code>{host}</code>, <code>{port}</code>, <code>{user}</code> and <code>{database}</code> substitute connection values without a shell. Do not add shell quotes.</li>
+        <li>Set the correct AWS region/profile or Google account as needed. Use the original RDS endpoint when signing a token, including through SSH.</li>
+        <li>Use <code>verify-full</code> and the provider's CA bundle. Token commands require TLS over TCP. For an externally managed automatic-IAM local proxy, use its documented ordinary connection settings instead.</li>
+        <li>Test the connection. Helpers run only for new physical connections, including exports/reconnects, with a default 30-second timeout and 64 KiB output limit. They must print a single token, without prompts, banners or JSON.</li>
+      </ol>
+      <p>Helper arguments are saved configuration: keep secrets out of them and review imported executable paths before connecting. Trunq stores no helper token on disk and suppresses helper output in errors. Existing database sessions keep their authenticated identity. Kerberos/GSS/SSPI and SASL OAUTHBEARER are not implemented.</p>
+      <p>See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/cloud-authentication.md">full cloud-authentication guide</a> for Azure service principals, managed identity/certificate/federated CLI logins, AWS/Google prerequisites, client-certificate formats and proxy distinctions.</p>
     </section>
 
     <section>
@@ -355,6 +373,19 @@ ORDER BY status;</code></pre></div>
       <p>Expand a table for its indexes, constraints, triggers and policies. Hover for index methods, validity, constraint definitions and trigger functions. An RLS indicator marks enabled row security. Server-level <b>Roles</b> and <b>Tablespaces</b> show attributes and ownership; right-click a role to copy its DDL.</p>
       <h3 id="slow-queries">Find expensive statements</h3>
       <p>Right-click a database → <b>Slow queries (pg_stat_statements)</b>. Review and run the generated SQL to inspect calls, execution time, returned rows and buffer/temp-block counters. Your DBA must preload and install <a href="https://www.postgresql.org/docs/18/pgstatstatements.html">pg_stat_statements</a>; Trunq does not change the server configuration. Access to other users’ query text depends on your role.</p>
+    </section>
+
+    <section>
+      <h2 id="administration">Extensions, scheduled jobs &amp; audits</h2>
+      <p>Right-click a database → <b>Database tools</b>, or search the command palette. Tools open editable SQL for review. The database tree now shows installed extensions, event triggers and publications; schema types are searchable.</p>
+      <h3 id="extension-management">Inspect and add extensions</h3>
+      <p>The extension inventory lists available/installed versions, owners, schemas, dependencies and trusted/superuser requirements, with generated create/update SQL. An installed extension's context menu opens versions and an update template. Check the correct database, privileges, provider allowlist and preload/restart requirements before execution, then refresh schema.</p>
+      <p>Server binaries and provider flags are operational prerequisites. Azure uses extension allowlisting and preload settings; RDS uses parameter groups; Cloud SQL uses supported extension flags. Preserve existing settings when editing lists. Trunq does not install server packages or restart instances.</p>
+      <h3 id="pg-cron">Manage pg_cron jobs</h3>
+      <p>After server setup, templates cover extension installation, named scheduling, pausing and removing a job. Schedule, name and SQL command are bound values. The inspection query shows visible jobs and the most recent 200 runs; permissions/RLS and run-history recording affect what appears. Jobs run on the server after Trunq closes, using server timezone and privileges. Pausing/removing a schedule does not undo completed work.</p>
+      <h3 id="audit-inspection">Inspect audit configuration and security</h3>
+      <p>Audit tools report visible logging/pgAudit settings, current identity, roles/memberships, table RLS flags, schema ACLs and default ACLs. Foreign-server and replication inspections omit stored options and connection strings that may contain credentials. These are point-in-time inspections, not complete effective-privilege analysis or a durable audit trail.</p>
+      <p>pgAudit requires server setup, audit-class configuration and durable log collection. Local query history is editable and clearable. Configure database and cloud control-plane logs, retention and access separately; this update does not ingest provider logs. The <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/administration.md">administration guide</a> includes provider sources, practical examples and the remaining catalog/editor gaps.</p>
     </section>
 
     <section>

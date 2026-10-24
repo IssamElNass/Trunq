@@ -64,9 +64,13 @@ window.TRUNQ_FAQ = {
 
     // ── connecting
     { id: "azure", k: "entra microsoft aad active directory", topic: "connect", q: "Does it work with Azure?",
-      a: "Yes, including Microsoft Entra ID sign-in. Sign in once with your browser, a device code or the Azure CLI, and Trunq refreshes your access for you. Azure global, Azure China (21Vianet) and Azure US Government are all supported." },
+      a: "Yes, including Microsoft Entra ID sign-in. Sign in once with your browser, a device code or the Azure CLI, and Trunq refreshes your access for you. Azure global, Azure China (21Vianet) and Azure US Government are supported. Service-principal secrets can be read from the launch environment; managed/federated identities can use the CLI token preset." },
     { id: "cloud", k: "aws rds aurora supabase neon gcp google cloud sql heroku digitalocean hosted remote", topic: "connect", q: "Can I connect to databases in the cloud?",
-      a: "If you can reach it with a host, user and password (or a postgres:// URL), Trunq can connect, with encryption from \"disable\" up to \"verify-full\". Azure Entra ID is the only cloud-specific sign-in built in today." },
+      a: "If you can reach it with a host, user and password (or a postgres:// URL), Trunq can connect, with encryption from \"disable\" up to \"verify-full\". Token-command presets support Azure CLI, AWS RDS IAM and Google Cloud SQL IAM; custom helpers and client certificates are also supported. Configure provider IAM grants and network access separately. See {docs:cloud-auth}." },
+    { id: "extensions", k: "extension install update version pgcron scheduler cron", topic: "connect", q: "Can I add extensions and schedule pg_cron jobs?",
+      a: "Database tools opens extension inventories and reviewed install/update/job SQL. Configure server packages, provider allowlists, preload and restarts first; Trunq does not perform those steps automatically. See {docs:administration}." },
+    { id: "auditing", k: "audit pgaudit logs security grants roles rls", topic: "safety", q: "Does Trunq provide an audit trail?",
+      a: "It can inspect visible logging/pgAudit settings and security metadata. Query history is editable, not a server audit trail. Configure pgAudit plus durable provider/server log collection separately. See {docs:audit-inspection}." },
     { id: "ssh", k: "tunnel bastion jump host key agent", topic: "connect", q: "Can I connect through an SSH tunnel or bastion host?",
       a: "Yes. Add an SSH tunnel to a connection and sign in with your ssh-agent, a key file or a password. All tabs for that server share a single SSH login, and host keys are checked against your known_hosts file." },
     { id: "url", k: "connection string uri pgpass socket", topic: "connect", q: "Can I paste a connection URL?",
@@ -74,9 +78,9 @@ window.TRUNQ_FAQ = {
 
     // ── privacy & data
     { id: "data", k: "telemetry tracking analytics privacy spy collect", topic: "privacy", q: "Does Trunq send my data anywhere?",
-      a: "Never. Trunq has no telemetry. It only connects to your databases, your SSH servers and, if you use Entra ID, Microsoft's sign-in service." },
+      a: "Never. Trunq has no telemetry. It connects to your databases, SSH servers and configured Entra endpoints. Provider CLIs or custom token helpers make their own connections; only configure helpers you trust." },
     { id: "passwords", k: "password keychain credentials secret token", topic: "privacy", q: "Where are my passwords stored?",
-      a: "In your operating system's keychain: macOS Keychain, Windows Credential Manager or the Secret Service on Linux. Never in plain files. Azure access tokens are kept in memory only." },
+      a: "In your operating system's keychain: macOS Keychain, Windows Credential Manager or the Secret Service on Linux. Access tokens stay in memory. Service-principal secrets can come from environment variables. Helper arguments are saved as ordinary configuration, so keep secrets out of them." },
     { id: "settings", k: "config folder reset delete history", topic: "privacy", q: "Where are my settings, and how do I reset Trunq?",
       a: 'Connections, settings and query history live in one folder (the exact path for each system is in {docs:storage}). Delete that folder to start fresh.' },
     { id: "export", k: "download csv json markdown excel copy", topic: "privacy", q: "Can I export my results?",

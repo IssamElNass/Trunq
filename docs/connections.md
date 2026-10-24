@@ -19,7 +19,7 @@ postgresql://analyst@[::1]:5432/reporting?sslmode=prefer
 
 The importer reads the user, password, host, port, database and `sslmode`. Percent-encode reserved characters in credentials, for example `%40` for `@` and `%3A` for `:`. IPv6 literals need brackets.
 
-Other URL query parameters are not imported. Set SSH, read-only mode and timeouts in the form instead; a URL containing options such as `connect_timeout` does not apply them automatically. Review the populated fields after **Apply**.
+Other URL query parameters are not imported. Set SSH, read-only mode and timeouts in the form instead; a URL containing options such as `connect_timeout` does not apply them automatically. Review the populated fields after **Apply**. Importing a different host/port/user without a password clears the previous endpoint’s password; supply the intended credential before testing/saving.
 
 ## What each TLS mode checks
 
@@ -30,12 +30,12 @@ The default is `prefer`. These are the five modes exposed by Trunq:
 | `disable` | No PostgreSQL TLS | Not checked | Not checked |
 | `prefer` | TLS when accepted; plaintext if the server declines TLS | Not checked | Not checked |
 | `require` | Required | Not checked | Not checked |
-| `verify-ca` | Required | Checked against the platform trust store | Not checked |
-| `verify-full` | Required | Checked against the platform trust store | Checked |
+| `verify-ca` | Required | Checked against platform roots plus a configured CA bundle | Not checked |
+| `verify-full` | Required | Checked against platform roots plus a configured CA bundle | Checked |
 
 Use `verify-full` when you need to verify the server's identity. `require` encrypts the connection but accepts an untrusted or mismatched certificate. A TLS handshake error is still an error in `prefer`; its plaintext fallback concerns a server that declines TLS negotiation.
 
-For a private certificate authority, arrange trust in the platform certificate store used by native TLS. The connection dialog has no per-profile CA-file or client-certificate selector. A hostname mismatch usually means the database Host field differs from a name in the server certificate.
+For a private/provider certificate authority, set **Advanced → Root CA bundle** to an absolute PEM file path, or arrange trust in the platform store. Client certificate/key fields support certificate authentication; see [formats and cloud examples](cloud-authentication.md#client-certificate-authentication). These files require TCP with at least `require`; select `verify-full` to check trust and hostname. A hostname mismatch usually means the database Host differs from a name in the server certificate.
 
 TLS negotiation also applies to the PostgreSQL connection inside an SSH tunnel. Trunq verifies the database hostname from the Host field, rather than the bastion hostname. SSH host-key verification is a separate check.
 
@@ -66,7 +66,7 @@ The password file itself contains plaintext credentials. Restrict its access, fo
 |---|---|---|
 | Read-only connection | Off | Sets PostgreSQL `default_transaction_read_only=on` for new sessions |
 | Statement timeout | `0` seconds | A positive value sets `statement_timeout`; zero adds no client-specified limit, although server policy can still impose one |
-| Connect timeout | `10` seconds | Bounds connection setup phases; SSH and authentication have additional allowances |
+| Connect timeout | `10` seconds | Bounds opening the transport, including SSH and TLS negotiation; authentication has an additional 5 seconds. Credential acquisition has its own timeout |
 | Show system schemas | Off | Includes `pg_catalog` and `information_schema` in browsing |
 | Only show the default database | Off | Limits the browser listing to the profile's configured database |
 
@@ -89,11 +89,15 @@ For a changed key, compare the reported fingerprint with a trusted administrator
 
 ## Microsoft Entra ID session behaviour
 
-See [Azure setup](usage.md#azure-database-for-postgresql-microsoft-entra-id) for the cloud and sign-in choices. A cached access token is reused while it has more than five minutes of validity. Before a new database connection, Trunq refreshes or signs in again as necessary. This does not replace the authentication of an already-open database session.
+See [Azure setup](usage.md#azure-database-for-postgresql-microsoft-entra-id) for the cloud and sign-in choices. Interactive/application tokens are cached separately for each configured sign-in identity while they have more than five minutes of validity. CLI mode asks the CLI at every new connection to respect external account changes. Before a new database connection, Trunq refreshes or signs in again as necessary. This does not replace the authentication of an already-open database session.
 
 Browser and device-code flows can store a refresh token in the OS keychain. Azure CLI mode obtains a token from your existing CLI login. Tenant policy determines when another interactive sign-in is required; refresh-token use does not promise a fixed sign-in lifetime. The connection dialog's **Sign out** clears the cached token and stored refresh token for that sign-in configuration; it does not terminate existing database sessions or sign the Azure CLI out.
 
 The database User field must identify an Entra principal or role configured on the PostgreSQL server. Leave it empty only when the signed-in account should supply it. For China or US Government, select the matching cloud and CLI cloud configuration. Azure profiles enforce at least `require`; select `verify-full` when certificate and hostname validation are required.
+
+## Other providers and application identities
+
+See [cloud-neutral authentication](cloud-authentication.md) for Azure service principals, managed identity/certificate/federation via CLI, AWS RDS IAM, Google Cloud SQL IAM, arbitrary token commands and client certificates. Authentication helpers run on connection workers, with bounded output/timeouts. They do not run on the UI thread.
 
 ## Connection count and disconnects
 

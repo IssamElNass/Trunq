@@ -159,7 +159,7 @@
   } else {
     addCommands([
       ["Install Trunq", "install"], ["Nightly builds", "nightly-builds"], ["Connect to your first database", "first-steps"],
-      ["Azure & Microsoft Entra ID", "azure"], ["Safety features", "safety"],
+      ["Azure & Microsoft Entra ID", "azure"], ["Cloud authentication and token commands", "cloud-auth"], ["Extensions, pg_cron and auditing", "administration"], ["Safety features", "safety"],
       ["ER diagrams & metadata", "relationships"], ["Docker & Docker Hub", "docker"], ["Performance checks", "performance"],
       ["Settings", "settings"], ["Back up your workspace", "backup-restore"], ["TLS verification", "tls-modes"],
       ["Keyboard shortcuts", "shortcuts"], ["Troubleshooting", "troubleshooting"], ["Build from source", "build"],

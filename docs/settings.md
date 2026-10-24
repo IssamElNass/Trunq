@@ -79,7 +79,7 @@ In Docker, the supplied image uses `/data` for its workspace and Compose persist
 5. Restore into the destination settings directory while Trunq is closed, or launch it with `TRUNQ_CONFIG_DIR` pointing to the restored copy.
 6. Recheck hosts, environment labels, file paths and SSH key paths on the destination computer. Supply credentials there through its keychain, password file or sign-in flow.
 
-Copying the workspace does not export the OS keychain, a running SSH agent or the Azure CLI login. A workspace backup also does not contain the database's schemas or rows; database backups need PostgreSQL backup tooling.
+Copying the workspace does not export the OS keychain, a running SSH agent, provider CLI logins, secret environment values or TLS certificate/key files. Helper executable/argument configuration and TLS paths do move; review those before connecting in the new workspace. A workspace backup also does not contain the database's schemas or rows; database backups need PostgreSQL backup tooling.
 
 ## Reset settings or remove history
 
@@ -93,6 +93,8 @@ Use **Query history → Clear** to clear history. This does not clear snippets o
 |---|---|
 | `TRUNQ_CONFIG_DIR` | Override the local workspace directory |
 | `PGPASSFILE` | Select a PostgreSQL password file |
+| `AZURE_CLIENT_SECRET` (or configured variable name) | Supply the native service-principal secret to the app process |
+| Provider CLI environment/profile selectors | Inherited by token helpers; use explicit CLI arguments or launch environment to select the intended identity |
 | `WGPU_BACKEND=gl` | Request OpenGL when the default graphics backend does not work |
 | `TRUNQ_SCRIPT` | Drive development UI runs; suppresses normal workspace saving |
 | `TRUNQ_BENCH` | Enable the development benchmark path; suppresses normal workspace saving |

@@ -775,6 +775,14 @@ impl App {
                     actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: meta::SLOW_QUERIES_SQL.to_string(), run: false });
                     ui.close();
                 }
+                ui.menu_button("Database tools", |ui| {
+                    for recipe in crate::db::admin::RECIPES {
+                        if w::menu_item(ui, icon::CODE, recipe.label).clicked() {
+                            actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: recipe.sql.into(), run: false });
+                            ui.close();
+                        }
+                    }
+                });
                 if w::menu_item(ui, icon::REFRESH, "Refresh schema").clicked() {
                     actions.push(Action::RefreshCatalog { profile: pid, db: db.clone() });
                     ui.close();
@@ -816,14 +824,24 @@ impl App {
                 continue;
             };
             let user_schemas = cat.schemas.iter().filter(|s| !s.is_system).count();
+            database_objects_tree(ui, node, &cat, pid, &db, filter, actions);
             for schema in &cat.schemas {
                 let matches = |n: &str| filter.is_empty() || n.to_lowercase().contains(filter);
-                let any_match = filter.is_empty() || schema.relations.iter().any(|r| matches(&r.name)) || schema.functions.iter().any(|f| matches(&f.name));
+                let any_match = filter.is_empty()
+                    || schema.relations.iter().any(|r| matches(&r.name))
+                    || schema.functions.iter().any(|f| matches(&f.name))
+                    || schema.types.iter().any(|t| matches(&t.name));
                 if !any_match {
                     continue;
                 }
                 // Hide empty "public" when other schemas exist.
-                if schema.name == "public" && schema.relations.is_empty() && schema.functions.is_empty() && user_schemas > 1 && filter.is_empty() {
+                if schema.name == "public"
+                    && schema.relations.is_empty()
+                    && schema.functions.is_empty()
+                    && schema.types.is_empty()
+                    && user_schemas > 1
+                    && filter.is_empty()
+                {
                     continue;
                 }
                 let skey = schema.name.clone();
@@ -1039,15 +1057,16 @@ impl App {
                         }
                     }
                 }
-                if !schema.types.is_empty() && filter.is_empty() {
+                let types: Vec<_> = schema.types.iter().filter(|t| matches(&t.name)).collect();
+                if !types.is_empty() {
                     let gkey = format!("{}/Types", schema.name);
-                    let gopen = node.open.contains(&gkey);
-                    let (r, _) = tree_row(ui, 3, Some(gopen), icon::TYPE, pal.dim, "Types", &schema.types.len().to_string(), None, false, false);
+                    let gopen = node.open.contains(&gkey) || !filter.is_empty();
+                    let (r, _) = tree_row(ui, 3, Some(gopen), icon::TYPE, pal.dim, "Types", &types.len().to_string(), None, false, false);
                     if r.clicked() && !node.open.remove(&gkey) {
                         node.open.insert(gkey.clone());
                     }
                     if gopen {
-                        for t in &schema.types {
+                        for t in types {
                             let kind = match t.kind {
                                 'e' => "enum",
                                 'd' => "domain",
@@ -2161,6 +2180,15 @@ impl App {
         }
         for s in &self.servers {
             for (db, n) in &s.nodes {
+                for recipe in crate::db::admin::RECIPES {
+                    items.push((
+                        icon::CODE,
+                        pal.dim,
+                        format!("{} · {db}", recipe.label),
+                        "database tools".into(),
+                        PaletteCmd::Act(Action::NewQuery { profile: s.profile_id, db: db.clone(), sql: recipe.sql.into(), run: false }),
+                    ));
+                }
                 items.push((
                     icon::NETWORK,
                     pal.accent,
@@ -2595,10 +2623,15 @@ fn first_line(s: &str) -> String {
 
 /// A collapsible metadata group below a relation or server.
 fn object_group(ui: &mut Ui, open: &mut HashSet<String>, key: String, depth: usize, ico: &str, label: &str, count: usize) -> bool {
+    object_group_filtered(ui, open, key, depth, ico, label, count, false)
+}
+
+#[allow(clippy::too_many_arguments)] // tree row presentation plus expansion policy
+fn object_group_filtered(ui: &mut Ui, open: &mut HashSet<String>, key: String, depth: usize, ico: &str, label: &str, count: usize, force_open: bool) -> bool {
     if count == 0 {
         return false;
     }
-    let expanded = open.contains(&key);
+    let expanded = force_open || open.contains(&key);
     let (r, _) = tree_row(ui, depth, Some(expanded), ico, theme::p().dim, label, &count.to_string(), None, false, false);
     if r.clicked() && !open.remove(&key) {
         open.insert(key);
@@ -2689,6 +2722,45 @@ fn server_objects_tree(ui: &mut Ui, server: &mut Server, profile: &Profile, filt
         for (name, owner, location) in spaces {
             let (r, _) = tree_row(ui, 2, None, icon::DATABASE, pal.dim, name, owner, None, false, false);
             r.on_hover_text(format!("Owner: {owner}\n{location}"));
+        }
+    }
+}
+
+fn database_objects_tree(ui: &mut Ui, node: &mut DbNode, cat: &Catalog, pid: u64, db: &str, filter: &str, actions: &mut Vec<Action>) {
+    let matches = |name: &str| filter.is_empty() || name.to_lowercase().contains(filter);
+    let extensions: Vec<_> = cat.extensions.iter().filter(|(name, _)| matches(name)).collect();
+    if object_group_filtered(ui, &mut node.open, "db/extensions".into(), 2, icon::PLUG, "Extensions", extensions.len(), !filter.is_empty()) {
+        for (name, version) in extensions {
+            let (r, _) = tree_row(ui, 3, None, icon::PLUG, theme::p().dim, name, version, None, false, false);
+            if r.double_clicked() {
+                actions.push(Action::NewQuery { profile: pid, db: db.into(), sql: crate::db::admin::extension_details(name), run: false });
+            }
+            r.context_menu(|ui| {
+                for (label, sql) in [
+                    ("Available versions and requirements", crate::db::admin::extension_details(name)),
+                    ("Update extension · review SQL", crate::db::admin::extension_update(name)),
+                    ("Manage all extensions", crate::db::admin::EXTENSIONS.into()),
+                ] {
+                    if w::menu_item(ui, icon::CODE, label).clicked() {
+                        actions.push(Action::NewQuery { profile: pid, db: db.into(), sql, run: false });
+                        ui.close();
+                    }
+                }
+            });
+        }
+    }
+    let triggers: Vec<_> = cat.event_triggers.iter().filter(|(name, _, _, _)| matches(name)).collect();
+    if object_group_filtered(ui, &mut node.open, "db/event-triggers".into(), 2, icon::ZAP, "Event triggers", triggers.len(), !filter.is_empty()) {
+        for (name, event, enabled, function) in triggers {
+            let (r, _) = tree_row(ui, 3, None, icon::ZAP, theme::p().dim, name, if *enabled { event } else { "disabled" }, None, false, false);
+            r.on_hover_text(format!("{event}\n{function}"));
+        }
+    }
+    let publications: Vec<_> = cat.publications.iter().filter(|(name, _, _)| matches(name)).collect();
+    if object_group_filtered(ui, &mut node.open, "db/publications".into(), 2, icon::NETWORK, "Publications", publications.len(), !filter.is_empty()) {
+        for (name, all, operations) in publications {
+            let (r, _) = tree_row(ui, 3, None, icon::NETWORK, theme::p().dim, name, operations, None, false, false);
+            r.on_hover_text(if *all { "All tables" } else { "Selected tables" });
         }
     }
 }

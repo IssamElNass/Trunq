@@ -1,4 +1,6 @@
+pub mod admin;
 pub mod azure;
+pub mod credentials;
 pub mod meta;
 pub mod result;
 pub mod session;

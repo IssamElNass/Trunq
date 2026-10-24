@@ -18,6 +18,8 @@ pub enum AuthMethod {
     Password,
     /// Microsoft Entra ID access token (Azure Database for PostgreSQL).
     AzureEntra(AzureConfig),
+    /// Cloud-neutral helper returning a short-lived password/token on stdout.
+    TokenCommand(crate::db::credentials::TokenCommand),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,6 +33,7 @@ pub struct Profile {
     pub user: String,
     pub database: String,
     pub ssl_mode: SslMode,
+    pub tls: crate::db::wire::TlsConfig,
     pub auth: AuthMethod,
     pub save_password: bool,
     pub color: Option<[u8; 3]>,
@@ -56,6 +59,7 @@ impl Default for Profile {
             user: std::env::var("USER").unwrap_or_else(|_| "postgres".into()),
             database: "postgres".into(),
             ssl_mode: SslMode::Prefer,
+            tls: Default::default(),
             auth: AuthMethod::Password,
             save_password: true,
             color: None,
@@ -129,6 +133,9 @@ impl Profile {
     /// May block (keychain access, Entra sign-in), call from a worker.
     pub fn connect_params(&self, database: &str, session_password: Option<&str>) -> Result<ConnectParams> {
         let database = if database.is_empty() { self.database.as_str() } else { database };
+        if !matches!(self.auth, AuthMethod::Password) && self.host.trim().starts_with('/') {
+            return Err(anyhow!("token authentication requires a TLS connection over TCP"));
+        }
         let mut user = self.user.clone();
         let password = match &self.auth {
             AuthMethod::Password => session_password
@@ -142,6 +149,7 @@ impl Profile {
                 }
                 Some(token.token)
             }
+            AuthMethod::TokenCommand(command) => Some(command.password(&self.host, self.port, &self.user, database)?),
         };
         let mut options = Vec::new();
         if self.read_only {
@@ -156,7 +164,8 @@ impl Profile {
             user,
             password,
             database: database.to_string(),
-            ssl_mode: if self.is_azure() && self.ssl_mode < SslMode::Require { SslMode::Require } else { self.ssl_mode },
+            ssl_mode: if !matches!(self.auth, AuthMethod::Password) && self.ssl_mode < SslMode::Require { SslMode::Require } else { self.ssl_mode },
+            tls: self.tls.clone(),
             application_name: "Trunq".into(),
             connect_timeout: Duration::from_secs(self.connect_timeout_s.max(1) as u64),
             options: (!options.is_empty()).then(|| options.join(" ")),
@@ -481,6 +490,28 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_authentication_fields_preserve_old_profiles_and_require_explicit_application_identity() {
+        let profile: Profile = serde_json::from_str(r#"{"host":"localhost","auth":"Password"}"#).unwrap();
+        assert!(!profile.tls.configured());
+        let profile = Profile { auth: AuthMethod::AzureEntra(AzureConfig { flow: azure::AzureFlow::ClientSecret, ..Default::default() }), ..profile };
+        assert!(profile.connect_params("", None).unwrap_err().to_string().contains("explicit tenant"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_commands_resolve_on_connection_and_enforce_tls() {
+        let command =
+            crate::db::credentials::TokenCommand { executable: "/usr/bin/printf".into(), arguments: "%s\\n\nlocal-test-token".into(), ..Default::default() };
+        let profile = Profile { auth: AuthMethod::TokenCommand(command), ssl_mode: SslMode::Disable, ..Default::default() };
+        let params = profile.connect_params("reporting", Some("ignored-password")).unwrap();
+        assert_eq!(params.password.as_deref(), Some("local-test-token"));
+        assert_eq!(params.database, "reporting");
+        assert_eq!(params.ssl_mode, SslMode::Require);
+        let socket = Profile { host: "/tmp".into(), ..profile };
+        assert!(socket.connect_params("", None).is_err());
+    }
 
     #[test]
     fn ipv6_and_socket_urls() {

@@ -116,7 +116,9 @@ Enable **SSH tunnel** in the connection dialog. The database host is resolved fr
 
 ## Azure Database for PostgreSQL (Microsoft Entra ID)
 
-Choose **Microsoft Entra ID** authentication and the matching Azure cloud. Browser, device-code and Azure CLI sign-in are supported. [Azure setup](docs/usage.md#azure-database-for-postgresql-microsoft-entra-id).
+Choose **Microsoft Entra ID** authentication and the matching Azure cloud. Browser, device-code, Azure CLI and service-principal sign-in are supported. Token commands add AWS RDS IAM, Google Cloud SQL IAM and custom brokers; PEM CA/client certificates are configurable. [Cloud-neutral setup](docs/cloud-authentication.md).
+
+Right-click a database → **Database tools** for extension inventory/install/update SQL, pg_cron job templates, audit/security inspections and replication/foreign-server inventories. [Administration guide and current limits](docs/administration.md).
 
 ## Keyboard shortcuts
 

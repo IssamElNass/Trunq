@@ -13,11 +13,11 @@ cargo test --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-Two benchmarks are ignored by default. Database and SSH tests return early when their environment variables are absent; a green unit-test run alone does not verify those integrations.
+Three benchmarks are ignored by default. Database and SSH tests return early when their environment variables are absent; a green unit-test run alone does not verify those integrations.
 
 ## PostgreSQL integration tests
 
-Point the tests at a disposable database owned by a role permitted to create schemas and temporary tables:
+Point the tests at a disposable database owned by a role permitted to create schemas, temporary tables and test roles:
 
 ```sh
 TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
@@ -25,6 +25,12 @@ TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
 ```
 
 This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, and CSV/SQL export round trips. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
+
+Optional fixture checks:
+
+- `TRUNQ_TEST_ADMIN_URL`: a disposable database with pg_cron and pgAudit preloaded/installed. `cargo test --locked scheduler_templates_bind -- --nocapture` checks parameter binding, pause/remove and audit settings without leaving a job behind.
+- `TRUNQ_TEST_TLS_CA`, `TRUNQ_TEST_TLS_CERT`, `TRUNQ_TEST_TLS_KEY`: PEM CA/client chain and unencrypted PKCS #8 key. Point `TRUNQ_TEST_DATABASE_URL` at a TLS-enabled server reached as `localhost`, whose server certificate covers only `localhost`, and configure certificate-only authentication for role `cert_user` (certificate CN). `cargo test --locked custom_ca_and_client_certificate_authentication` verifies chain/hostname failures and client authentication. Include IPv4/IPv6 local access in the fixture.
+- Without those variables, these optional tests return early. The ordinary suite still tests helper bounds, SSL timeouts, argument substitution and restricted-role catalog queries. Real provider logins/CLI selection require separate cloud infrastructure.
 
 The [performance guide](performance.md) explains the opt-in benchmarks and their measurement limits. The [website guide](../website/README.md#check-website-changes) covers the browser checks, including the handbook's mobile navigation, search and copy controls.
 

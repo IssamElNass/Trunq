@@ -115,6 +115,7 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
 - **Command palette** (⌘K): one search field for tables, views, functions, connections, saved snippets, recent queries and commands such as *Format SQL* or *Switch this tab to another connection*.
 - **Object tree** with databases, schemas, tables (expand to columns with types, keys and foreign keys), views, materialized views, sequences, functions and types, with row estimates and sizes.
+- **Database tools**: extension version/dependency inventory, reviewed create/update templates, pg_cron scheduling/pause/removal, audit/security inspections, foreign-server and replication inventories. Installed extensions, event triggers and publications appear in the tree. [Administration and limits](administration.md).
 - **Quick DDL**: view or copy the DDL of a table, view, function, sequence or index from the context menu.
 - Generate SELECT, INSERT, UPDATE, DELETE, EXPLAIN and maintenance commands from the context menu.
 
@@ -123,7 +124,9 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 - TLS (`disable` up to `verify-full`), SCRAM-SHA-256, MD5 and trust, Unix sockets, `~/.pgpass`, or paste a `postgres://` URL.
 - **SSH tunnels** through a bastion or jump host, with agent, key file or password authentication.
 - **Microsoft Entra ID** for Azure Database for PostgreSQL (Azure global, **Azure China (21Vianet)** and Azure US Government) through the browser, a device code or the Azure CLI, with automatic hourly token refresh.
-- Passwords, SSH secrets and refresh tokens live in the operating system keychain, never in files. No telemetry.
+- **Token commands** with Azure CLI, AWS RDS and Google Cloud presets, plus arbitrary local helpers; tokens are acquired for new connections. [Provider setup](cloud-authentication.md).
+- Per-profile PEM CA bundles and client certificates with PKCS #8 keys; TLS setup has a bounded timeout.
+- Passwords, SSH secrets and interactive refresh tokens use the operating system keychain. Service-principal secrets can come from environment variables. Keep secrets out of ordinary saved helper arguments. No telemetry.
 
 ### Connection ownership and cleanup
 

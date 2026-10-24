@@ -11,7 +11,7 @@
 //! * **Azure CLI** – reuses an existing `az login` session.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -88,15 +88,18 @@ pub enum AzureFlow {
     Browser,
     DeviceCode,
     AzureCli,
+    /// OAuth client credentials; the secret is read from an environment variable.
+    ClientSecret,
 }
 
 impl AzureFlow {
-    pub const ALL: [AzureFlow; 3] = [AzureFlow::Browser, AzureFlow::DeviceCode, AzureFlow::AzureCli];
+    pub const ALL: [AzureFlow; 4] = [AzureFlow::Browser, AzureFlow::DeviceCode, AzureFlow::AzureCli, AzureFlow::ClientSecret];
     pub fn label(self) -> &'static str {
         match self {
             AzureFlow::Browser => "Interactive (browser)",
             AzureFlow::DeviceCode => "Device code",
             AzureFlow::AzureCli => "Azure CLI (az login)",
+            AzureFlow::ClientSecret => "Service principal (secret from environment)",
         }
     }
 }
@@ -112,6 +115,9 @@ pub struct AzureConfig {
     /// Custom app registration; empty means the Azure CLI public client.
     #[serde(default)]
     pub client_id: String,
+    /// Variable name only. The value is never serialized or stored in keyring.
+    #[serde(default)]
+    pub client_secret_env: String,
 }
 
 impl AzureConfig {
@@ -121,8 +127,11 @@ impl AzureConfig {
     fn client_id(&self) -> &str {
         if self.client_id.trim().is_empty() { DEFAULT_CLIENT_ID } else { self.client_id.trim() }
     }
-    fn cache_key(&self) -> String {
-        format!("{:?}|{:?}|{}|{}", self.flow, self.cloud, self.tenant(), self.client_id())
+    fn cache_key(&self, login_hint: &str) -> String {
+        // Profiles for different accounts/groups must not silently share the
+        // first interactive sign-in or refresh token in the same tenant.
+        serde_json::to_string(&(self.flow, self.cloud, self.tenant(), self.client_id(), login_hint.trim(), self.client_secret_env.trim()))
+            .expect("serializing string fields")
     }
 }
 
@@ -160,11 +169,23 @@ pub static CANCEL_SIGN_IN: std::sync::atomic::AtomicBool = std::sync::atomic::At
 /// Returns a valid access token, refreshing or signing in as needed.
 /// Blocking; call from a worker thread.
 pub fn get_token(cfg: &AzureConfig, login_hint: &str) -> Result<AccessToken> {
-    let key = cfg.cache_key();
+    let key = cfg.cache_key(login_hint);
+    // The CLI's selected identity can change outside Trunq (az login/account
+    // set). Let its cache own renewal and account selection on every connection.
+    if cfg.flow == AzureFlow::AzureCli {
+        let token = azure_cli_token(cfg)?;
+        TOKENS.lock().insert(key, token.clone());
+        return Ok(token);
+    }
     if let Some(t) = TOKENS.lock().get(&key)
         && t.fresh()
     {
         return Ok(t.clone());
+    }
+    if cfg.flow == AzureFlow::ClientSecret {
+        let token = client_secret_token(cfg, &key)?;
+        TOKENS.lock().insert(key, token.clone());
+        return Ok(token);
     }
     let _guard = SIGN_IN_LOCK.lock();
     // Another thread may have signed in while we waited.
@@ -175,6 +196,7 @@ pub fn get_token(cfg: &AzureConfig, login_hint: &str) -> Result<AccessToken> {
     }
     let token = match cfg.flow {
         AzureFlow::AzureCli => azure_cli_token(cfg)?,
+        AzureFlow::ClientSecret => client_secret_token(cfg, &key)?,
         AzureFlow::Browser | AzureFlow::DeviceCode => {
             let refreshed = load_refresh_token(&key).and_then(|rt| match refresh(cfg, &key, &rt) {
                 Ok(t) => Some(t),
@@ -195,16 +217,18 @@ pub fn get_token(cfg: &AzureConfig, login_hint: &str) -> Result<AccessToken> {
 }
 
 /// Forgets cached tokens and the stored refresh token (sign out).
-pub fn sign_out(cfg: &AzureConfig) {
-    let key = cfg.cache_key();
+pub fn sign_out(cfg: &AzureConfig, login_hint: &str) {
+    let key = cfg.cache_key(login_hint);
     TOKENS.lock().remove(&key);
     if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, &key) {
         let _ = e.delete_credential();
     }
 }
 
-pub fn cached_token(cfg: &AzureConfig) -> Option<AccessToken> {
-    TOKENS.lock().get(&cfg.cache_key()).cloned()
+pub fn cached_token_info(cfg: &AzureConfig, login_hint: &str) -> Option<(Option<String>, i64)> {
+    // The dialog needs identity/expiry, not a copy of a multi-kilobyte bearer
+    // credential on every rendered frame.
+    TOKENS.lock().get(&cfg.cache_key(login_hint)).map(|token| (token.upn.clone(), token.minutes_left()))
 }
 
 fn load_refresh_token(key: &str) -> Option<String> {
@@ -241,7 +265,7 @@ struct TokenResponse {
 fn post_token(cfg: &AzureConfig, form: &[(&str, &str)]) -> Result<TokenResponse> {
     let mut resp = agent().post(endpoint(cfg, "token")).send_form(form.iter().copied())?;
     let body = resp.body_mut().read_to_string()?;
-    serde_json::from_str(&body).with_context(|| format!("unexpected token response: {body}"))
+    serde_json::from_str(&body).context("unexpected token response format")
 }
 
 fn finish(key: &str, r: TokenResponse) -> Result<AccessToken> {
@@ -265,6 +289,20 @@ fn refresh(cfg: &AzureConfig, key: &str, rt: &str) -> Result<AccessToken> {
     let scope = scopes(cfg);
     let r = post_token(cfg, &[("client_id", cfg.client_id()), ("grant_type", "refresh_token"), ("refresh_token", rt), ("scope", &scope)])?;
     finish(key, r)
+}
+
+fn client_secret_token(cfg: &AzureConfig, key: &str) -> Result<AccessToken> {
+    if cfg.tenant.trim().is_empty() || cfg.client_id.trim().is_empty() {
+        bail!("service principal authentication requires an explicit tenant and application client id");
+    }
+    let name = if cfg.client_secret_env.trim().is_empty() { "AZURE_CLIENT_SECRET" } else { cfg.client_secret_env.trim() };
+    let secret = std::env::var(name).context("service principal secret environment variable is missing or is not UTF-8")?;
+    if secret.is_empty() {
+        bail!("service principal secret environment variable is empty");
+    }
+    let r = post_token(cfg, &[("client_id", cfg.client_id()), ("client_secret", &secret), ("grant_type", "client_credentials"), ("scope", cfg.cloud.scope())])?;
+    // Client credentials never need a persistent refresh token.
+    finish(key, TokenResponse { refresh_token: None, ..r })
 }
 
 fn b64url(bytes: &[u8]) -> String {
@@ -314,8 +352,11 @@ fn browser_sign_in(cfg: &AzureConfig, key: &str, login_hint: &str) -> Result<Acc
                 Err(e) => return Err(e.into()),
             };
             stream.set_nonblocking(false)?;
+            stream.set_read_timeout(Some(Duration::from_secs(2)))?;
             let mut line = String::new();
-            BufReader::new(&stream).read_line(&mut line)?;
+            if BufReader::new((&stream).take(8193)).read_line(&mut line).is_err() || line.len() > 8192 || !line.ends_with('\n') {
+                continue;
+            }
             let path = line.split_whitespace().nth(1).unwrap_or("");
             let query = path.split_once('?').map(|x| x.1).unwrap_or("");
             let params: HashMap<String, String> = query.split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), urldecode(v))).collect();
@@ -380,7 +421,7 @@ fn device_code_sign_in(cfg: &AzureConfig, key: &str) -> Result<AccessToken> {
     let scope = scopes(cfg);
     let mut resp = agent().post(endpoint(cfg, "devicecode")).send_form([("client_id", cfg.client_id()), ("scope", scope.as_str())])?;
     let body = resp.body_mut().read_to_string()?;
-    let dc: DeviceCodeResponse = serde_json::from_str(&body).with_context(|| format!("unexpected device code response: {body}"))?;
+    let dc: DeviceCodeResponse = serde_json::from_str(&body).context("unexpected device code response format")?;
     if let Some(e) = dc.error {
         bail!("{e}: {}", dc.error_description.unwrap_or_default());
     }
@@ -388,10 +429,13 @@ fn device_code_sign_in(cfg: &AzureConfig, key: &str) -> Result<AccessToken> {
     let url = dc.verification_uri.unwrap_or_else(|| "https://microsoft.com/devicelogin".into());
     *PROMPT.lock() = Some(SignInPrompt::DeviceCode { url: url.clone(), code: dc.user_code.unwrap_or_default() });
     CANCEL_SIGN_IN.store(false, std::sync::atomic::Ordering::SeqCst);
-    let mut interval = dc.interval.unwrap_or(5);
-    let deadline = SystemTime::now() + Duration::from_secs(dc.expires_in.unwrap_or(900));
+    let mut interval = dc.interval.unwrap_or(5).clamp(1, 30);
+    let deadline = SystemTime::now() + Duration::from_secs(dc.expires_in.unwrap_or(900).clamp(1, 900));
     let result = loop {
-        std::thread::sleep(Duration::from_secs(interval));
+        let poll_at = std::time::Instant::now() + Duration::from_secs(interval);
+        while std::time::Instant::now() < poll_at && !CANCEL_SIGN_IN.load(std::sync::atomic::Ordering::SeqCst) && SystemTime::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
         if CANCEL_SIGN_IN.load(std::sync::atomic::Ordering::SeqCst) {
             break Err(anyhow!("sign-in cancelled"));
         }
@@ -402,7 +446,7 @@ fn device_code_sign_in(cfg: &AzureConfig, key: &str) -> Result<AccessToken> {
             post_token(cfg, &[("client_id", cfg.client_id()), ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"), ("device_code", &device_code)]);
         match r {
             Ok(r) if r.error.as_deref() == Some("authorization_pending") => continue,
-            Ok(r) if r.error.as_deref() == Some("slow_down") => interval += 5,
+            Ok(r) if r.error.as_deref() == Some("slow_down") => interval = (interval + 5).min(30),
             Ok(r) => break finish(key, r),
             Err(e) => break Err(e),
         }
@@ -412,22 +456,16 @@ fn device_code_sign_in(cfg: &AzureConfig, key: &str) -> Result<AccessToken> {
 }
 
 fn azure_cli_token(cfg: &AzureConfig) -> Result<AccessToken> {
-    let mut cmd = std::process::Command::new(if cfg!(windows) { "az.cmd" } else { "az" });
+    let mut args: Vec<String> = ["account", "get-access-token", "--scope", cfg.cloud.scope(), "--output", "json"].into_iter().map(str::to_string).collect();
     // `--scope` (rather than `--resource-type`) works regardless of which
     // cloud the CLI is currently pointed at, as long as the user signed in there.
-    cmd.args(["account", "get-access-token", "--scope", cfg.cloud.scope(), "--output", "json"]);
     if !cfg.tenant.trim().is_empty() {
-        cmd.args(["--tenant", cfg.tenant.trim()]);
+        args.extend(["--tenant".into(), cfg.tenant.trim().into()]);
     }
-    let out = cmd.output().context("could not run the Azure CLI (`az`). Install it or choose another sign-in method")?;
-    if !out.status.success() {
-        bail!(
-            "az account get-access-token failed: {}\nMake sure you ran `az cloud set --name {}` and `az login`.",
-            String::from_utf8_lossy(&out.stderr).trim(),
-            cfg.cloud.cli_name()
-        );
-    }
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+    let out = super::session::runtime()
+        .block_on(super::credentials::run(if cfg!(windows) { "az.cmd" } else { "az" }, &args, Duration::from_secs(30)))
+        .with_context(|| format!("Azure CLI token acquisition failed; check `az cloud set --name {}` and your CLI login", cfg.cloud.cli_name()))?;
+    let v: serde_json::Value = serde_json::from_slice(&out).context("Azure CLI returned invalid JSON")?;
     let token = v["accessToken"].as_str().ok_or_else(|| anyhow!("az returned no accessToken"))?.to_string();
     let claims = jwt_claims(&token);
     let expires_at = v["expires_on"]
@@ -467,7 +505,7 @@ fn urldecode(s: &str) -> String {
         match bytes[i] {
             b'+' => out.push(b' '),
             b'%' if i + 2 < bytes.len() => {
-                if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                if let Some(v) = std::str::from_utf8(&bytes[i + 1..i + 3]).ok().and_then(|s| u8::from_str_radix(s, 16).ok()) {
                     out.push(v);
                     i += 2;
                 } else {
@@ -502,6 +540,17 @@ mod tests {
         let s = "a b/c?d=e&f=ü";
         assert_eq!(urldecode(&urlencode(s)), s);
         assert_eq!(urldecode("x%2"), "x%2");
+        assert_eq!(urldecode("%é🙂"), "%é🙂");
+    }
+
+    #[test]
+    fn token_cache_separates_accounts_and_flows() {
+        let cfg = AzureConfig::default();
+        assert_ne!(cfg.cache_key("alice@example.com"), cfg.cache_key("bob@example.com"));
+        assert_eq!(cfg.cache_key(" alice@example.com "), cfg.cache_key("alice@example.com"));
+        assert_ne!(cfg.cache_key("alice"), AzureConfig { flow: AzureFlow::ClientSecret, ..cfg.clone() }.cache_key("alice"));
+        let old: AzureConfig = serde_json::from_str(r#"{"flow":"AzureCli","tenant":"","client_id":""}"#).unwrap();
+        assert_eq!(old.client_secret_env, "");
     }
 
     #[test]

@@ -106,10 +106,13 @@ automatically** before every new connection, so you never paste tokens by hand.
    - **Device code** is for machines without a browser (remote desktops, SSH). Trunq shows a code to enter at
      `microsoft.com/devicelogin` or the China equivalent.
    - **Azure CLI** reuses your `az login` session. For China run `az cloud set --name AzureChinaCloud` first.
+   - **Service principal** uses an explicit tenant/application ID and a secret read from a named environment variable. Set the PostgreSQL role explicitly. See [cloud authentication](cloud-authentication.md#service-principal-with-a-secret).
 5. **User**: your Entra user principal (for example `jane@contoso.com`) or the Entra group or role that was
    granted access. Leave it empty to use the signed-in account.
 6. Optional: **Tenant** (`contoso.onmicrosoft.com` or a tenant ID). Under *Advanced* you can set your own
    **client ID** if your organisation blocks the Azure CLI public client.
+
+For AWS RDS IAM, Google Cloud SQL IAM, managed/federated Azure identities and custom token helpers, see [cloud-neutral authentication](cloud-authentication.md). Database context menus also offer [extension, pg_cron and audit tools](administration.md); they open SQL for review.
 
 ## Keyboard shortcuts
 

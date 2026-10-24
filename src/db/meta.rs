@@ -386,7 +386,7 @@ ORDER BY 1, 2;
 SELECT evtname, evtevent, evtenabled <> 'D', evtfoid::regproc::text FROM pg_event_trigger ORDER BY 1;
 
 SELECT pubname, puballtables,
-       concat_ws(', ', CASE WHEN pubinsert THEN 'insert' END, CASE WHEN pubupdate THEN 'update' END, CASE WHEN pubdelete THEN 'delete' END)
+       concat_ws(', ', CASE WHEN pubinsert THEN 'insert' END, CASE WHEN pubupdate THEN 'update' END, CASE WHEN pubdelete THEN 'delete' END, CASE WHEN pubtruncate THEN 'truncate' END)
 FROM pg_publication ORDER BY 1;
 "#
     )
