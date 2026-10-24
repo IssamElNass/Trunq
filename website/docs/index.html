@@ -12,8 +12,9 @@
   <link rel="stylesheet" href="../styles.css">
   <script>
     (function () {
-      var t = localStorage.getItem("trunq-theme") ||
-        (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      var t;
+      try { t = localStorage.getItem("trunq-theme"); } catch {}
+      if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
       document.documentElement.dataset.theme = t;
       document.documentElement.classList.add("js");
     })();
@@ -74,7 +75,8 @@
 <div class="docs">
   <aside class="docs__side" aria-label="Documentation">
     <details class="docs__menu" open data-docs-menu>
-      <summary>Browse docs</summary>
+      <summary>Contents <span data-docs-current>Getting started</span></summary>
+      <button class="docs__search" type="button" data-open-palette><span>Search the handbook</span><span><kbd data-mod>⌘</kbd><kbd>K</kbd></span></button>
       <nav class="sidenav">
         <p>Getting started</p>
         <a href="#introduction">Introduction</a>
@@ -82,6 +84,7 @@
         <a href="#first-steps">Your first connection</a>
         <p>Connecting</p>
         <a href="#connecting">Connection options</a>
+        <a href="#ssh">SSH tunnels</a>
         <a href="#azure">Azure &amp; Entra ID</a>
         <p>Using Trunq</p>
         <a href="#editor">Writing queries</a>
@@ -113,14 +116,15 @@
 
     <section id="introduction">
       <p class="eyebrow">Documentation</p>
-      <h1>Welcome to Trunq</h1>
+      <h1>Trunq handbook</h1>
       <p class="doc__lede">
-        Trunq is a fast, free desktop app for PostgreSQL. This guide covers everything from installing it
-        and connecting to your first database to the safety features that help keep production healthy.
+        Connect to PostgreSQL, write your first query and understand the result.
+        Start here, then explore the tools for working with data and making safer changes.
       </p>
+      <p class="doc__meta"><span>PostgreSQL 13–18</span><span>macOS · Windows · Linux</span><span>Free &amp; open source</span></p>
       <div class="doc__cards">
         <a href="#install"><b>Install Trunq →</b><span>Download for macOS, Windows or Linux.</span></a>
-        <a href="#first-steps"><b>Connect in a minute →</b><span>Add a database and run your first query.</span></a>
+        <a href="#first-steps"><b>Run your first query →</b><span>Connect, check your server and get a result.</span></a>
         <a href="#safety"><b>Stay out of trouble →</b><span>How Trunq protects your databases.</span></a>
       </div>
     </section>
@@ -151,10 +155,16 @@
       <ol class="steps">
         <li><b>Click New connection</b> (or the plug icon in the top bar).</li>
         <li><b>Paste a connection URL</b> such as <code>postgres://user:pass@db.example.com:5432/app?sslmode=require</code> and press <b>Apply</b>, or fill in the host, port, database and user yourself.</li>
-        <li><b>Press Test connection, then Save.</b> Give production connections a <b>red colour</b>. The colour appears on every tab and above the editor, so you always know where you are.</li>
+        <li><b>Press Test connection, then Save.</b> Choose an environment for the connection. <b>Production</b> appears in red, including a strip above the editor, so you always know where you are.</li>
         <li><b>Browse your database.</b> The connection appears in the sidebar. Expand it to see databases, schemas, tables, views, functions and types. Double-click a table to open its data, or right-click anything for more actions.</li>
         <li><b>Write a query.</b> Press <kbd data-mod>⌘</kbd><kbd>T</kbd> for a new SQL editor, then <kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run the statement under the cursor.</li>
       </ol>
+      <h3 id="first-query">Check your connection</h3>
+      <p>Paste this read-only query into the editor and press <kbd data-mod>⌘</kbd><kbd>⏎</kbd>. It works on any PostgreSQL database, without the sample data.</p>
+      <div class="codeblock"><pre data-copyable><code>SELECT current_database() AS database,
+       current_user AS username,
+       version() AS server_version;</code></pre></div>
+      <p>You should see one row with your database, username and PostgreSQL version. Check the connection identity in the bottom bar before running queries that change data.</p>
       <p>Passwords are saved in your operating system's keychain, never in plain text.</p>
       <div class="note note--tip">
         <b>Want something to play with?</b> The repository includes a sample shop database with customers, orders, a million analytics events, views, functions and JSON:
@@ -175,10 +185,22 @@ psql -d shop -f dev/sample.sql</code></pre></div>
       </ul>
       <h3 id="connection-safety">Per-connection safety settings</h3>
       <ul>
-        <li><b>Colour:</b> shown on every tab of that connection. Make production red.</li>
+        <li><b>Environment:</b> label the connection LOCAL, DEV, TEST, STAGING or PRODUCTION. Production is shown in red.</li>
         <li><b>Read-only:</b> prevents accidental writes.</li>
         <li><b>Statement timeout:</b> stops runaway queries automatically.</li>
       </ul>
+    </section>
+
+    <section>
+      <h2 id="ssh">SSH tunnels</h2>
+      <p>Reach PostgreSQL through a bastion or jump host without opening the database to the internet.</p>
+      <ol class="steps">
+        <li>Open <b>New connection → SSH tunnel</b> and enable <b>Connect through an SSH server</b>.</li>
+        <li>Enter the SSH host, port and user. Choose your SSH agent, a private key file or password authentication.</li>
+        <li>Set the database host and port as seen <b>from the SSH server</b>. Use <code>localhost</code> when PostgreSQL runs on that server.</li>
+        <li>Test the connection and save it. Connections to the same server share one SSH session.</li>
+      </ol>
+      <p>Trunq checks host keys against <code>~/.ssh/known_hosts</code> and its own known-hosts file. A new host is recorded on first use. If a host key changes, verify the new fingerprint with your administrator before removing the old entry.</p>
     </section>
 
     <section>
@@ -221,20 +243,50 @@ psql -d shop -f dev/sample.sql</code></pre></div>
         <li><b>Files &amp; history:</b> open and save <code>.sql</code> files (or drop them on the window), search your query history, and your workspace is restored when you restart.</li>
         <li><b>Messages:</b> notices and <code>NOTIFY</code> events appear in the Messages tab.</li>
       </ul>
+      <h3 id="query-parameters">Use bound parameters</h3>
+      <p>Write <code>:name</code> for a value you want to supply when the query runs. Repeated names share one value; PostgreSQL receives bound parameters, not pasted SQL.</p>
+      <div class="codeblock"><pre data-copyable><code>SELECT id, full_name, country
+FROM shop.customers
+WHERE country = :country
+ORDER BY id
+LIMIT 100;</code></pre></div>
+      <p>This example uses <code>dev/sample.sql</code>. Enter <code>NL</code> when prompted, without SQL quotes. Save frequently used queries as snippets from the editor menu.</p>
+      <h3 id="query-execution">Choose what runs</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Action</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td><b>Run</b></td><td>Runs the selection, or the statement under the cursor.</td></tr>
+          <tr><td><b>Run all</b></td><td>Runs the whole script. Each result gets its own tab.</td></tr>
+          <tr><td><b>Explain</b></td><td>Shows the query plan. <b>Explain Analyze</b> actually executes the statement.</td></tr>
+          <tr><td><b>Dry run</b></td><td>Runs an INSERT, UPDATE or DELETE inside a transaction, shows affected rows and rolls back.</td></tr>
+        </tbody>
+      </table></div>
     </section>
 
     <section>
       <h2 id="results">Working with results</h2>
-      <p>Results never freeze the app, however big they are.</p>
+      <p>Results load in pages while database work runs in the background. The grid draws the visible cells; query speed still depends on your server and SQL.</p>
       <ul>
         <li><b>Streaming:</b> the first page contains up to 1,000 rows and more load as you scroll. Server execution still depends on the query and database.</li>
-        <li><b>Smooth grid:</b> millions of rows and hundreds of columns scroll at full frame rate, with sticky headers, row numbers, and resizable or auto-fit columns.</li>
+        <li><b>Virtualised grid:</b> sticky headers, row numbers and resizable or auto-fit columns keep large results navigable.</li>
         <li><b>Spreadsheet-style selection</b> with live <b>Σ / avg / min / max</b> of the selected numbers.</li>
-        <li><b>Sort and filter</b> instantly.</li>
+        <li><b>Search and sort</b> the loaded rows. A table's filter bar applies a <code>WHERE</code> clause on the server.</li>
         <li><b>Copy or export</b> as TSV, CSV, JSON, Markdown, SQL <code>INSERT</code> statements or an <code>IN (…)</code> list.</li>
         <li><b>Follow foreign keys:</b> <kbd data-mod>⌘</kbd>-click a foreign key value to jump to the row it points to, in any result.</li>
         <li><b>Value viewer</b> with pretty-printed JSON.</li>
       </ul>
+      <h3 id="export-scope">Export the rows you mean</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Export option</th><th>Included rows</th></tr></thead>
+        <tbody>
+          <tr><td><b>Visible rows</b></td><td>The loaded rows that match the current search, filters and sorting.</td></tr>
+          <tr><td><b>Loaded rows</b></td><td>All rows fetched so far, even if hidden by a local search.</td></tr>
+          <tr><td><b>Entire result from the server</b></td><td>Runs the query again on a separate connection and streams every row to the file. Changes since the original query may appear.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Entire-result export runs the SQL again, including any side effects. The destination is replaced only after success; a cancelled or failed export preserves an existing file. In CSV, SQL NULL is an unquoted empty field and empty text is <code>""</code>.</p>
+      <h3 id="compare-results">Compare and inspect</h3>
+      <p>Pin a result to keep it when you run another query, then use the side-by-side view. Select two to six rows to compare their differences, or open card view to read a wide record vertically. Open a JSON value for a searchable tree with copyable paths.</p>
     </section>
 
     <section>
@@ -245,6 +297,7 @@ psql -d shop -f dev/sample.sql</code></pre></div>
         <li><b>Edit cells inline,</b> or add, duplicate and delete rows, and set values to NULL. Changed cells are highlighted.</li>
         <li><b>Preview the generated SQL,</b> then save everything in one transaction.</li>
       </ol>
+      <p>If a statement fails, that save is rolled back and pending edits remain available to fix and retry. Within an existing explicit transaction, Save uses a savepoint and leaves the transaction open for you to commit or roll back.</p>
     </section>
 
     <section>
@@ -256,6 +309,7 @@ psql -d shop -f dev/sample.sql</code></pre></div>
       <h2 id="import">Importing CSV files</h2>
       <p>Drop a CSV or TSV file onto the window. Trunq works out the delimiter, header, column names and <b>column types</b> (integer, bigint, numeric, boolean, date, timestamptz, uuid, jsonb).</p>
       <p>Create a new table or add to an existing one. The data is streamed in a single transaction with live progress, which is the fastest way to load data into PostgreSQL.</p>
+      <p>Check the preview before importing: inference uses a sample, so later values may need a wider type. Quoted delimiters and timezone offsets are supported, and colliding header names receive unique suffixes. Errors and cancellation roll back the import.</p>
     </section>
 
     <section>
@@ -307,7 +361,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
       <p>When a query has been running for more than 1.5 seconds, Trunq shows what it's waiting for and <b>which session is blocking it</b>, including the user, application, query and transaction age. One click cancels that session's query or terminates the session.</p>
 
       <h3 id="dry-run">Dry run</h3>
-      <p>Press <kbd>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code> inside a transaction. Trunq shows exactly which rows would change and then <b>always rolls back</b>.</p>
+      <p>Press <kbd data-alt>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd> to run an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code> inside a transaction. Trunq shows exactly which rows would change and then <b>always rolls back</b>.</p>
 
       <h3 id="migration-linter">Migration linter</h3>
       <p>Before running a change that would block or rewrite a table, Trunq explains the risk and the safe alternative. Plain <code>CREATE INDEX</code> statements get a one-click <i>Add CONCURRENTLY</i> fix. Trunq checks for:</p>
@@ -352,7 +406,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
         <li>Every connection belongs to exactly one tab or sidebar item, and closes when that goes away. A running statement is cancelled first.</li>
         <li>Idle query tabs disconnect after 15 minutes and reconnect transparently when you come back.</li>
         <li>The status bar shows the live connection count. Click it to see every connection (purpose, PID, age) and close any of them.</li>
-        <li>Each connection sets <code>application_name</code> (for example <code>Trunq — Query 3</code>), so you can find it in <code>pg_stat_activity</code>.</li>
+        <li>Each connection sets <code>application_name</code> (for example <code>Trunq: Query 3</code>), so you can find it in <code>pg_stat_activity</code>.</li>
         <li>Background metadata connections use <code>lock_timeout</code> and <code>statement_timeout</code> and never take table locks, so they can't get stuck behind a migration.</li>
         <li>TCP keep-alive detects dead networks, and everything is closed cleanly on exit.</li>
       </ul>
@@ -367,7 +421,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
           <tbody>
             <tr><td><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Run statement under cursor (or selection)</td></tr>
             <tr><td><kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Run whole script</td></tr>
-            <tr><td><kbd>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Dry run (INSERT / UPDATE / DELETE, always rolled back)</td></tr>
+            <tr><td><kbd data-alt>⌥</kbd><kbd data-mod>⌘</kbd><kbd>⏎</kbd></td><td>Dry run (INSERT / UPDATE / DELETE, always rolled back)</td></tr>
             <tr><td><kbd data-mod>⌘</kbd><kbd>E</kbd> · <kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>E</kbd></td><td>Explain · Explain Analyze</td></tr>
             <tr><td><kbd>Esc</kbd></td><td>Cancel running query</td></tr>
             <tr><td><kbd>⇧</kbd><kbd data-mod>⌘</kbd><kbd>F</kbd></td><td>Format SQL</td></tr>
@@ -399,7 +453,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
           </tbody>
         </table>
       </div>
-      <p>To reset Trunq, delete the settings folder.</p>
+      <p>Set <code>TRUNQ_CONFIG_DIR=/path/to/workspace</code> to keep settings, history, snippets and table layouts in an isolated directory. Passwords remain in the operating system keychain. To reset a workspace, close Trunq and back up its settings folder before removing it.</p>
     </section>
 
     <section>
@@ -427,7 +481,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
 
     <section>
       <h2 id="build">Build from source</h2>
-      <p>You'll need <a href="https://rustup.rs">Rust</a>. The first build downloads and compiles dependencies and takes a few minutes. Later builds are incremental.</p>
+      <p>You'll need <a href="https://rustup.rs">Rust 1.95 or newer</a>. The first build downloads and compiles dependencies and takes a few minutes. Later builds are incremental. Use <code>--locked</code> to keep the repository's dependency versions.</p>
       <div class="tabs" role="tablist" aria-label="Choose your system">
         <button role="tab" aria-selected="true" aria-controls="build-mac" id="tab-mac" data-os-tab="mac">macOS</button>
         <button role="tab" aria-selected="false" aria-controls="build-linux" id="tab-linux" data-os-tab="deb linux" tabindex="-1">Linux</button>
@@ -446,20 +500,20 @@ cd trunq
       </div>
       <div role="tabpanel" id="build-linux" aria-labelledby="tab-linux" hidden>
         <div class="codeblock"><pre data-copyable><code><span class="c"># Debian / Ubuntu build dependencies</span>
-sudo apt install build-essential pkg-config libssl-dev libxkbcommon-dev libwayland-dev \
-  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libdbus-1-dev
+sudo apt install build-essential pkg-config libssl-dev libxkbcommon-dev libwayland-dev
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
 git clone https://github.com/IssamElNass/trunq.git trunq && cd trunq
-cargo build --release
+cargo build --release --locked
 sudo install -m 755 target/release/trunq /usr/local/bin/trunq</code></pre></div>
-        <p>On Fedora: <code>sudo dnf install gcc pkgconf openssl-devel libxkbcommon-devel wayland-devel gtk3-devel dbus-devel</code>.</p>
+        <p>On Fedora: <code>sudo dnf install gcc pkgconf openssl-devel libxkbcommon-devel wayland-devel</code>. Linux uses Secret Service (GNOME Keyring or KWallet) to store passwords.</p>
       </div>
       <div role="tabpanel" id="build-win" aria-labelledby="tab-win" hidden>
-        <p>Install <a href="https://rustup.rs">Rust</a> and choose the MSVC toolchain (it installs the Visual Studio build tools). Then, in a terminal:</p>
+        <p>Install <a href="https://rustup.rs">Rust</a> with the MSVC toolchain, plus the <b>Desktop development with C++</b> workload from <a href="https://visualstudio.microsoft.com/visual-cpp-build-tools/">Visual Studio Build Tools</a> and a Windows SDK. Then, in a terminal:</p>
         <div class="codeblock"><pre data-copyable><code>git clone https://github.com/IssamElNass/trunq.git trunq
 cd trunq
-cargo build --release
+cargo build --release --locked
 .\target\release\trunq.exe</code></pre></div>
       </div>
     </section>
@@ -469,7 +523,10 @@ cargo build --release
       <p>Read <a href="https://github.com/IssamElNass/trunq/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> before opening a pull request.</p>
       <div class="codeblock"><pre data-copyable><code>cargo run              <span class="c"># debug build, fastest to compile</span>
 cargo run --release    <span class="c"># optimised build</span>
-cargo test             <span class="c"># run the test suite</span></code></pre></div>
+cargo test --locked    <span class="c"># run the test suite</span>
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings</code></pre></div>
+      <p>Database tests need a disposable PostgreSQL server; without <code>TRUNQ_TEST_DATABASE_URL</code> they return without connecting. Set that variable and run <code>cargo test --locked live_tests -- --test-threads=1</code> to exercise queries, paging, COPY, catalog metadata, table-save recovery, dry-run rollback and exports. SSH live tests additionally require <code>TRUNQ_TEST_SSH</code>. The <a href="https://github.com/IssamElNass/trunq/blob/main/docs/README.md">documentation index</a> links to the installation, user and developer guides.</p>
       <h3 id="code-layout">Code layout</h3>
       <div class="table-wrap">
         <table>
@@ -502,8 +559,10 @@ cargo test             <span class="c"># run the test suite</span></code></pre><
   </article>
 
   <aside class="docs__toc" aria-label="On this page">
-    <p>On this page</p>
+    <p>In this section</p>
     <nav data-toc></nav>
+    <div class="docs__reading"><label for="reading-progress">Reading progress</label><progress id="reading-progress" max="100" value="0" data-reading-progress>0%</progress></div>
+    <a class="docs__help" href="https://github.com/IssamElNass/trunq/issues/new/choose">Something unclear? Open an issue ↗</a>
   </aside>
 </div>
 
@@ -524,7 +583,7 @@ cargo test             <span class="c"># run the test suite</span></code></pre><
     <div class="palette__search">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="text" data-palette-input placeholder="Search the docs…" aria-label="Search" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
-      <kbd>esc</kbd>
+      <button class="palette__close" type="button" data-close-palette aria-label="Close search">Esc</button>
     </div>
     <ul class="palette__list" id="palette-list" role="listbox" data-palette-list></ul>
   </div>

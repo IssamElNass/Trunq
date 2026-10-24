@@ -1,4 +1,4 @@
-// Docs page: sidebar highlighting, "On this page" for the current section, heading anchors. Needs site.js.
+// Docs navigation, section contents, reading progress and FAQ. Needs site.js.
 
 (() => {
   "use strict";
@@ -25,6 +25,8 @@
   const sideLinks = $$(".sidenav a");
   const toc = $("[data-toc]");
   const menu = $("[data-docs-menu]");
+  const currentLabel = $("[data-docs-current]");
+  const progress = $("[data-reading-progress]");
   const narrow = matchMedia("(max-width: 960px)");
 
   // Collapse the menu on small screens, and close it after picking a page.
@@ -33,7 +35,7 @@
   // Collapsing the menu moves the content, so land on the linked heading again.
   // The FAQ is built after the browser's own jump, and fonts can shift the page, so land again once settled.
   if (location.hash) {
-    const land = () => { if (!userScrolled) document.getElementById(location.hash.slice(1))?.scrollIntoView(); };
+    const land = () => { if (!userScrolled) document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: "instant" }); };
     let userScrolled = false;
     addEventListener("wheel", () => (userScrolled = true), { once: true, passive: true });
     addEventListener("touchmove", () => (userScrolled = true), { once: true, passive: true });
@@ -57,34 +59,56 @@
   // Each section is an h2 plus everything until the next one.
   const sections = $$(".doc section").filter((s) => $("h2[id]", s) || s.id);
   let current = null;
-  let tocObserver = null;
+  let subs = [];
+  let subLinks = [];
+  const heading = (section) => $("h2[id], h1", section);
+  const headingText = (h) => [...h.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("").trim();
 
   function setSection(section) {
     if (section === current) return;
     current = section;
     const id = $("h2[id]", section)?.id || section.id;
-    sideLinks.forEach((a) => a.toggleAttribute("aria-current", a.getAttribute("href") === "#" + id));
-    $(`.sidenav a[href="#${id}"]`)?.scrollIntoView({ block: "nearest" });
+    sideLinks.forEach((a) => {
+      if (a.getAttribute("href") === "#" + id) a.setAttribute("aria-current", "location");
+      else a.removeAttribute("aria-current");
+    });
+    currentLabel.textContent = headingText(heading(section));
+    // Scroll only the sidebar. scrollIntoView on a nav link also interrupts
+    // the document's smooth anchor navigation and can pull it off its target.
+    const active = sideLinks.find((a) => a.hasAttribute("aria-current"));
+    if (!narrow.matches && active) {
+      const side = $(".docs__side");
+      const box = side.getBoundingClientRect(), link = active.getBoundingClientRect();
+      if (link.top < box.top + 12) side.scrollTop += link.top - box.top - 12;
+      else if (link.bottom > box.bottom - 12) side.scrollTop += link.bottom - box.bottom + 12;
+    }
 
-    const subs = $$("h3[id]", section);
+    subs = $$("h3[id]", section);
     toc.innerHTML = subs.length
-      ? subs.map((h) => `<a href="#${h.id}">${esc(h.firstChild.textContent)}</a>`).join("")
-      : `<a href="#${id}" aria-current="true">${esc(($("h2", section) || $("h1", section)).firstChild.textContent)}</a>`;
-    tocObserver?.disconnect();
-    if (!subs.length) return;
-    const links = $$("a", toc);
-    tocObserver = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        links.forEach((a) => a.toggleAttribute("aria-current", a.getAttribute("href") === "#" + e.target.id));
-      }
-    }, { rootMargin: "-20% 0px -70% 0px" });
-    subs.forEach((h) => tocObserver.observe(h));
+      ? subs.map((h) => `<a href="#${h.id}">${esc(headingText(h))}</a>`).join("")
+      : `<a href="#${id}" aria-current="location">${esc(headingText(heading(section)))}</a>`;
+    subLinks = $$("a", toc);
   }
 
-  const sectionObserver = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) setSection(e.target);
-  }, { rootMargin: "-25% 0px -70% 0px" });
-  sections.forEach((s) => sectionObserver.observe(s));
-  setSection(sections[0]);
+  let queued = false;
+  function updatePosition() {
+    queued = false;
+    const line = $("[data-bar]").getBoundingClientRect().bottom + (narrow.matches ? 96 : 72);
+    const section = sections.findLast((s) => heading(s).getBoundingClientRect().top <= line) || sections[0];
+    setSection(section);
+    const sub = subs.findLast((h) => h.getBoundingClientRect().top <= line);
+    if (subs.length) subLinks.forEach((a) => {
+      if (sub && a.getAttribute("href") === "#" + sub.id) a.setAttribute("aria-current", "location");
+      else a.removeAttribute("aria-current");
+    });
+    const doc = $("#doc");
+    const distance = Math.max(1, doc.offsetHeight - innerHeight + line);
+    progress.value = Math.min(100, Math.max(0, (scrollY - doc.offsetTop) / distance * 100));
+    progress.textContent = Math.round(progress.value) + "%";
+  }
+  const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(updatePosition); } };
+  addEventListener("scroll", schedule, { passive: true });
+  addEventListener("resize", schedule);
+  document.fonts?.ready.then(schedule);
+  updatePosition();
 })();

@@ -7,6 +7,8 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Task-based documentation index, separate installation, usage, feature and developer guides, and a shorter project README.
+- Expanded handbook with a first-query walkthrough, SSH setup, bound parameters, export scopes and reading progress.
 - ER diagram entry points in database, schema and table menus and the command palette.
 - Browser groups for roles, tablespaces, indexes, constraints, triggers, RLS and policies.
 - Editable `pg_stat_statements` slow-query template and PostgreSQL research notes.
@@ -16,6 +18,20 @@ All notable changes to Trunq are documented here. The format follows
 - PostgreSQL 18 in the protocol test matrix.
 
 ### Fixed
+- Failed or cancelled exports preserve an existing destination; successful exports replace it after staging in the same directory.
+- CSV exports distinguish empty strings from NULL, and SQL exports quote non-finite numeric values.
+- Failed table saves roll back their changes and recover the connection; saves inside a user transaction use savepoints.
+- Dry runs close a previous paged cursor before choosing a transaction or savepoint, preserve bound parameters, and roll back in the session actor before reporting completion.
+- Destructive-query warnings inspect the modified query level and modifying CTEs, including WHERE clauses nested in subqueries.
+- CSV previews handle quoted empty fields, quoted delimiters, UTF-8 BOMs and unique normalized column names; timestamp inference validates both timezone offset directions.
+- Run Whole Script includes the full editor even with a selection; the confirmation dialog preserves bound parameters for dry runs.
+- Error highlighting tolerates offsets inside Unicode characters.
+- SQL highlighting refreshes glyphs after font-atlas changes instead of reusing stale meshes that display unrelated characters; syntax caches discard earlier edits.
+- Comment toggling handles mixed Unicode indentation without slicing inside a character.
+- Mouse and keyboard completion share parenthesis handling, report text changes and respect read-only editors.
+- Built-in SQL functions are suggested before a connection catalog has loaded.
+- Documentation navigation preserves the scroll destination, search can be closed with keyboard or touch, and theme switching works when browser storage is unavailable.
+- Website code copying preserves the displayed text and selects it when clipboard access is unavailable; build tabs support arrow keys, Home and End.
 - Trackpad scrolling no longer springs backwards at a loaded page boundary; keyboard navigation restores the correct scroll state, and sticky headers use the same painted offset as the body.
 - Empty search results no longer trigger a full row scan on every frame.
 - Result replacement and edited values correctly invalidate search, sorting, hidden empty columns and aggregate caches.

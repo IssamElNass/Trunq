@@ -17,8 +17,9 @@
   <link rel="stylesheet" href="styles.css">
   <script>
     (function () {
-      var t = localStorage.getItem("trunq-theme") ||
-        (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      var t;
+      try { t = localStorage.getItem("trunq-theme"); } catch {}
+      if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
       document.documentElement.dataset.theme = t;
       document.documentElement.classList.add("js");
     })();
@@ -379,7 +380,7 @@
     <div class="palette__search">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="text" data-palette-input placeholder="Search pages, docs, downloads…" aria-label="Search" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list">
-      <kbd>esc</kbd>
+      <button class="palette__close" type="button" data-close-palette aria-label="Close search">Esc</button>
     </div>
     <ul class="palette__list" id="palette-list" role="listbox" data-palette-list></ul>
   </div>

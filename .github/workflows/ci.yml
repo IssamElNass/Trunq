@@ -15,6 +15,31 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  website:
+    name: Website and handbook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/trunq-web-tests" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/trunq-web-tests/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check website and handbook
+        env:
+          NODE_PATH: ${{ runner.temp }}/trunq-web-tests/node_modules
+        run: |
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory website > "$RUNNER_TEMP/trunq-site.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/docs/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/check-website.cjs
+
   lint:
     name: Format & clippy
     runs-on: ubuntu-latest
