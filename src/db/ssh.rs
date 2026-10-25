@@ -138,7 +138,9 @@ impl client::Handler for Handler {
         use std::io::Write;
         let mut file = crate::storage::open_private_append(&trunq_known_hosts()).context("could not record SSH host key")?;
         let host = if self.port == 22 { self.host.clone() } else { format!("[{}]:{}", self.host, self.port) };
-        writeln!(file, "\n{host} {}", key.to_openssh()?).context("could not record SSH host key")?;
+        // Assemble one append record first so formatting cannot interleave
+        // separate field writes from simultaneous bastion handshakes.
+        file.write_all(format!("\n{host} {}\n", key.to_openssh()?).as_bytes()).context("could not record SSH host key")?;
         eprintln!("trunq: trusted new SSH host key for {}:{} ({fingerprint})", self.host, self.port);
         Ok(true)
     }
