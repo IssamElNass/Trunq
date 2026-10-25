@@ -119,6 +119,9 @@ impl client::Handler for Handler {
             PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
             PublicKeyOrCertificate::Certificate(_) => bail!("SSH host certificates are not supported; configure a pinned raw host key"),
         };
+        if key.algorithm().is_rsa() {
+            bail!("RSA SSH host keys are disabled; configure an Ed25519/ECDSA host key on the bastion");
+        }
         let fingerprint = key.fingerprint(keys::HashAlg::Sha256);
         // A changed key in either file is fatal (possible man-in-the-middle).
         let system_path =
