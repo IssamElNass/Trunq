@@ -164,6 +164,7 @@ pub struct QueryTab {
     params_prompt: Option<ParamsPrompt>,
     pub param_values: HashMap<String, String>,
     password_input: String,
+    password_input_target: Option<String>,
     pub autocommit: bool,
     pub table: Option<TableMode>,
     last_activity: Instant,
@@ -211,6 +212,7 @@ impl QueryTab {
             params_prompt: None,
             param_values: HashMap::new(),
             password_input: String::new(),
+            password_input_target: None,
             autocommit: true,
             table: None,
             last_activity: Instant::now(),
@@ -1129,19 +1131,29 @@ impl QueryTab {
         }
     }
 
+    fn sync_password_target(&mut self, target: Option<String>) {
+        if self.password_input_target != target {
+            self.password_input.clear();
+            self.password_input_target = target;
+        }
+    }
+
     fn password_bar(&mut self, ui: &mut Ui, ctx: &mut TabCtx) {
+        let target = self.profile(ctx).map(Profile::credential_target);
+        self.sync_password_target(target.clone());
         let pal = theme::p();
         egui::Frame::NONE.fill(pal.warn.gamma_multiply(0.10)).inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(icon::KEY).size(15.0).color(pal.warn));
                 ui.label(RichText::new("Password required for this connection").color(pal.text));
-                let r = w::password_input(ui, &mut self.password_input, "Password", 240.0);
+                let r = ui.push_id(&target, |ui| w::password_input(ui, &mut self.password_input, "Password", 240.0)).inner;
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if (w::button(ui, w::Kind::Primary, icon::LOG_IN, "Connect").clicked() || enter)
                     && !self.password_input.is_empty()
                     && let Some(pid) = self.profile_id
+                    && let Some(target) = target.clone()
                 {
-                    ctx.actions.push(Action::SetPassword(pid, std::mem::take(&mut self.password_input)));
+                    ctx.actions.push(Action::SetPassword(pid, target, std::mem::take(&mut self.password_input)));
                     self.session = None;
                     if self.table.is_some() {
                         self.pending_run = true;
@@ -1726,6 +1738,22 @@ fn edits_sql(t: &TableMode, pane: Option<&Pane>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn password_prompt_discards_unsent_input_when_the_profile_target_changes() {
+        let profile = Profile::default();
+        let mut tab = QueryTab::new(Some(profile.id), "postgres", String::new(), 13.5);
+        tab.sync_password_target(Some(profile.credential_target()));
+        tab.password_input = "old-target-secret".into();
+        tab.sync_password_target(Some(profile.credential_target()));
+        assert_eq!(tab.password_input, "old-target-secret");
+        let other = Profile { host: "other.example.com".into(), ..profile };
+        tab.sync_password_target(Some(other.credential_target()));
+        assert!(tab.password_input.is_empty());
+        tab.password_input = "new-target-secret".into();
+        tab.sync_password_target(None);
+        assert!(tab.password_input.is_empty());
+    }
 
     #[test]
     fn run_whole_script_ignores_editor_selection() {

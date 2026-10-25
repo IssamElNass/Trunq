@@ -6,9 +6,9 @@ Linux cloud environment, Rust 1.95.0, PostgreSQL 17.11, a separate pg_cron 1.6.5
 
 | Check | Result |
 |---|---|
-| `cargo test --locked --all-targets -- --test-threads=1` | 101 passed, 0 failed, 3 opt-in benchmarks ignored; ordinary database configured (14 tests actually connect) |
+| `cargo test --locked --all-targets -- --test-threads=1` | 103 passed, 0 failed, 3 opt-in benchmarks ignored; ordinary database configured (14 tests actually connect) |
 | Format, locked build and Clippy with warnings denied | Passed |
-| Credential/storage regressions | Endpoint/default-database/bastion changes isolate secrets; harmless label edits preserve them; repeated SQL compacts disk history; old history retains its latest window; Unix pgpass permissions, private atomic writes and symlink resistance verified |
+| Credential/storage regressions | Endpoint/default-database/bastion changes isolate secrets; harmless label edits preserve them; query/sidebar prompts discard unsent input; repeated SQL compacts disk history; old history retains its latest window; Unix pgpass permissions, private atomic writes and symlink resistance verified |
 | Protocol resource checks | Oversized headers rejected; real 1,500-notice PostgreSQL flood bounded and queue drain resets the budget; notification overflow bounded with feedback |
 | Real TLS/admin fixture | 21 live-test entries passed, 1 benchmark ignored (some entries are local checks or return early); custom CA/hostname rejection, required client certificate, restricted-role extension enable/upgrade, explicit dependencies, bound pg_cron schedule/pause/remove and pgAudit writes exercised |
 | Restricted role with pg_cron loaded | Initially failed because `current_setting('cron.database_name',true)` still enforces privilege checks; switched to visibility-aware `pg_settings` lookup. The restricted-role regression now explicitly requires successful inventory loading and passes. |

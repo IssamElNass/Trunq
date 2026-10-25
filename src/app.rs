@@ -75,6 +75,7 @@ impl Server {
         }
     }
     fn disconnect(&mut self) {
+        self.password_input.clear();
         self.root = None;
         self.dbs = None;
         self.dbs_promise = None;
@@ -398,8 +399,10 @@ impl App {
                 }
                 Action::NewProfile => self.dialog = Some(ConnDialog::new(None)),
                 Action::Toast(k, m) => self.toast(k, m),
-                Action::SetPassword(id, pw) => {
-                    self.passwords.insert(id, pw);
+                Action::SetPassword(id, target, pw) => {
+                    if self.profile(id).is_some_and(|profile| profile.credential_target() == target) {
+                        self.passwords.insert(id, pw);
+                    }
                 }
                 Action::ShowHistory => self.show_history = true,
                 Action::SaveTablePrefs(key, prefs) => {
@@ -715,11 +718,15 @@ impl App {
                     ui.label(RichText::new(format!("{} {}", icon::CIRCLE_X, first_line(&err))).small().color(pal.danger)).on_hover_text(&err);
                     ui.horizontal(|ui| {
                         if needs_pw {
-                            let r = ui.add(egui::TextEdit::singleline(&mut server.password_input).password(true).hint_text("password").desired_width(130.0));
+                            let r = ui
+                                .push_id(profile.credential_target(), |ui| {
+                                    ui.add(egui::TextEdit::singleline(&mut server.password_input).password(true).hint_text("password").desired_width(130.0))
+                                })
+                                .inner;
                             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                             if (ui.small_button("Connect").clicked() || enter) && !server.password_input.is_empty() {
                                 let pw = std::mem::take(&mut server.password_input);
-                                actions.push(Action::SetPassword(pid, pw.clone()));
+                                actions.push(Action::SetPassword(pid, profile.credential_target(), pw.clone()));
                                 server.disconnect();
                                 server.root = Some(Session::connect(&profile, &profile.database, "Object browser", Some(pw), ui.ctx()));
                             }
@@ -3094,5 +3101,18 @@ impl RelKind {
             RelKind::Foreign => icon::GLOBE,
             RelKind::Sequence => icon::HASH,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browser_disconnect_discards_unsent_password_input() {
+        let mut server = Server::new(1);
+        server.password_input = "old-target-secret".into();
+        server.disconnect();
+        assert!(server.password_input.is_empty());
     }
 }
