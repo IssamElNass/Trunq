@@ -22,6 +22,7 @@ Choose a task below. The [browser handbook](../website/docs/index.html) presents
 | Understand stable releases, nightly automation and build artifacts | [Release process](development.md#release-and-nightly-builds) |
 | Fix a bug and run the checks | [Development](development.md) · [Contributing](../CONTRIBUTING.md) |
 | Understand measured performance | [Performance checks](performance.md) |
+| Prepare production access and upgrades | [Production operations](production.md) · [Security findings](security-review.md) |
 | See what was actually verified | [Validation record](validation.md) |
 | Read PostgreSQL design notes | [PostgreSQL research](postgresql-research.md) |
 

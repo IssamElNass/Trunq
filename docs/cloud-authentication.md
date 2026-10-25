@@ -33,6 +33,10 @@ Only run helpers you trust: saved profiles contain executable paths and argument
 
 Token-command profiles default to `verify-full` and enforce at least `require` over TCP. Use **Advanced → Root CA bundle** for provider/private PEM CAs. `require` encrypts but does not verify the server identity. For a local proxy that itself performs automatic IAM authentication and does not accept PostgreSQL TLS locally, use the ordinary password method with the proxy's documented local connection settings; the proxy owns the remote TLS and token lifecycle.
 
+![Token-command dialog with AWS RDS arguments and verify-full](screenshots/auth-token-command.png)
+
+An illustrative AWS profile in the running client; no AWS login was performed. Replace endpoint, region and user with your actual configuration.
+
 ## Azure options
 
 ### Human sign-in and account changes
@@ -50,6 +54,10 @@ The native **Azure CLI** flow asks the CLI for a token at each new connection, s
 5. Enter the PostgreSQL role that your Entra administrator mapped to that principal and test the connection with `verify-full`.
 
 Only the variable's name is saved. Tokens remain in memory and are reacquired near expiry; this flow stores no refresh token. Rotate the secret in the launch environment and restart Trunq to guarantee use of the new value. Client credentials use the PostgreSQL resource's `/.default` scope. [Microsoft's client-credentials protocol](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow) also documents certificate and federated credentials.
+
+![Azure service-principal dialog with a secret environment variable name](screenshots/auth-service-principal.png)
+
+The tenant/application values are examples. Secret variable contains a variable name; the screenshot contains no application secret and does not demonstrate a live Entra login.
 
 ### Managed identity, certificate or federation through CLI
 
@@ -78,6 +86,10 @@ Under **Advanced**, provide absolute paths to:
 - Client key: matching, **unencrypted PKCS #8 PEM** private key.
 
 Supply both client certificate and key; encrypted keys and PKCS #12 archives are not accepted by these fields. Protect the key file with filesystem permissions. Certificate paths are saved in the workspace, but contents are not copied into it or the keychain. Recheck paths after moving a workspace. The server may authenticate using the certificate alone or additionally request a password; Trunq supports both. Choose `verify-full`; installing a client identity does not itself verify the server.
+
+![Advanced TLS fields for CA bundle and client certificate/key paths](screenshots/auth-client-certificate.png)
+
+Illustrative file paths in the native dialog. Protect the real key and verify certificate expiry/rotation in your environment.
 
 ## Troubleshooting
 

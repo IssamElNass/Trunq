@@ -100,6 +100,7 @@
         <a href="#navigation">Finding your way around</a>
         <p>Staying safe</p>
         <a href="#safety">Safety features</a>
+        <a href="#production">Production &amp; upgrades</a>
         <a href="#health">Health check</a>
         <a href="#connection-management">Connection management</a>
         <p>Reference</p>
@@ -203,7 +204,7 @@ psql -d shop -f dev/sample.sql</code></pre></div>
       </table></div>
       <p><code>require</code> encrypts but does not verify the server's identity. For provider/private CAs, set <b>Advanced → Root CA bundle</b> to a PEM file. Client certificate authentication supports PEM chains and unencrypted PKCS #8 keys; paths are saved, contents stay in their files. Use <code>verify-full</code> to validate the server. Inside SSH, the hostname checked is still the database Host. Local Unix sockets use socket permissions and PostgreSQL authentication rather than TLS negotiation.</p>
       <h3 id="password-sources">Passwords, URLs and pgpass</h3>
-      <p>A supplied session password takes precedence over a saved keychain password, then Trunq tries the first matching entry in <code>~/.pgpass</code> or <code>PGPASSFILE</code>. Password-file fields are <code>host:port:database:user:password</code>; the first four support <code>*</code>, and literal colons/backslashes need escaping. Protect the file because its passwords are plaintext.</p>
+      <p>A supplied session password takes precedence over a saved keychain password, then Trunq tries the first matching entry in <code>~/.pgpass</code> or <code>PGPASSFILE</code>. Password-file fields are <code>host:port:database:user:password</code>; the first four support <code>*</code>, and literal colons/backslashes need escaping. Protect the file because its passwords are plaintext. Unix files with group/other permission bits are ignored; use <code>chmod 600</code>.</p>
       <p>URL import reads the user, password, host, port, database and <code>sslmode</code>. Other query parameters are not applied; set timeouts, read-only mode and SSH in the form. Percent-encode reserved characters and put IPv6 hosts in brackets. Editing a profile affects new sessions; reconnect open tabs to use its changes.</p>
       <h3 id="connection-safety">Per-connection safety settings</h3>
       <ul>
@@ -222,7 +223,8 @@ psql -d shop -f dev/sample.sql</code></pre></div>
         <li>Set the database host and port as seen <b>from the SSH server</b>. Use <code>localhost</code> when PostgreSQL runs on that server.</li>
         <li>Test the connection and save it. Connections to the same server share one SSH session.</li>
       </ol>
-      <p>Trunq checks host keys against <code>~/.ssh/known_hosts</code> and its own known-hosts file. A new host is recorded on first use. If a host key changes, verify the new fingerprint with your administrator before removing the old entry.</p>
+      <p>Trunq checks host keys against <code>~/.ssh/known_hosts</code> and its own known-hosts file. A new host is recorded only when first-use trust is enabled. For production, disable <b>Trust previously unknown host keys on first use</b> and provision independently verified raw keys. Native SSH supports Ed25519/ECDSA; RSA and host certificates are unsupported. Changed keys across algorithms, revoked keys and read failures are refused. If a host key changes, verify the new fingerprint with your administrator before removing the old entry.</p>
+      <figure class="doc__shot"><img src="../assets/shots/ssh-host-verification.webp" alt="SSH dialog with trust on first use disabled" width="1440" height="1200" loading="lazy"><figcaption>Illustrative bastion profile; no connection to the example endpoint was attempted.</figcaption></figure>
     </section>
 
     <section>
@@ -267,6 +269,9 @@ psql -d shop -f dev/sample.sql</code></pre></div>
       </ol>
       <p>Helper arguments are saved configuration: keep secrets out of them and review imported executable paths before connecting. Trunq stores no helper token on disk and suppresses helper output in errors. Existing database sessions keep their authenticated identity. Kerberos/GSS/SSPI and SASL OAUTHBEARER are not implemented.</p>
       <p>See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/cloud-authentication.md">full cloud-authentication guide</a> for Azure service principals, managed identity/certificate/federated CLI logins, AWS/Google prerequisites, client-certificate formats and proxy distinctions.</p>
+      <figure class="doc__shot"><img src="../assets/shots/auth-token-command.webp" alt="AWS RDS token helper arguments with verify-full TLS" width="1440" height="1000" loading="lazy"><figcaption>Example endpoint and region in the running client; no AWS login was performed.</figcaption></figure>
+      <figure class="doc__shot"><img src="../assets/shots/auth-service-principal.webp" alt="Azure service-principal configuration using a secret environment variable name" width="1440" height="1000" loading="lazy"><figcaption>Example tenant/application values; the field contains a variable name, never the application secret.</figcaption></figure>
+      <figure class="doc__shot"><img src="../assets/shots/auth-client-certificate.webp" alt="Advanced TLS CA, client certificate and PKCS 8 key paths" width="1440" height="1200" loading="lazy"><figcaption>Illustrative file paths for a certificate-authenticated profile.</figcaption></figure>
     </section>
 
     <section>
@@ -354,6 +359,7 @@ FROM shop.orders
 GROUP BY status
 ORDER BY status;</code></pre></div>
       <p>This example uses <code>dev/sample.sql</code>. Plot order counts and revenue separately when their scales differ.</p>
+      <figure class="doc__shot"><img src="../assets/shots/chart-revenue.webp" alt="Monthly revenue chart from the sample shop orders" width="1440" height="900" loading="lazy"><figcaption>Monthly aggregation of disposable shop.orders sample data.</figcaption></figure>
     </section>
 
     <section>
@@ -380,6 +386,9 @@ ORDER BY status;</code></pre></div>
       <p>Right-click a database → <b>Database tools</b>, or search the command palette. Tools open editable SQL for review. The database tree now shows installed extensions, event triggers and publications; schema types are searchable.</p>
       <h3 id="extension-management">Inspect and add extensions</h3>
       <p>Right-click a database → <b>Manage extensions…</b>. Search all server-provided extensions by name or description, filter installed/available entries and select an extension. Choose a version and schema, review the displayed SQL, then click <b>Enable extension</b> or <b>Update to selected version</b>. The dependency option is explicit, read-only/recovery connections disable changes, and the manager/browser refresh after success.</p>
+      <figure class="doc__shot"><img src="../assets/shots/extensions.webp" alt="Extension manager showing hstore version and SQL preview" width="1440" height="1000" loading="lazy"><figcaption>Real server-provided inventory from the disposable PostgreSQL sample server.</figcaption></figure>
+      <figure class="doc__shot"><img src="../assets/shots/extension-dependencies.webp" alt="earthdistance dependency on cube in the extension manager" width="1440" height="1000" loading="lazy"><figcaption>Dependency installation is explicit; opening this view changes no database objects.</figcaption></figure>
+      <figure class="doc__shot"><img src="../assets/shots/extension-installed.webp" alt="Installed plpgsql owner schema and version" width="1440" height="1000" loading="lazy"><figcaption>Installed entries remain visible and do not offer applying the already-installed version.</figcaption></figure>
       <p>The <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/extensions.md">extension quick start</a> explains the complete flow and common errors. The separate SQL inventory lists versions, owners, schemas, dependencies and trusted/superuser requirements. An installed extension's context menu opens versions and an update template. Check the correct database, privileges, provider allowlist and preload/restart requirements before execution, then refresh schema.</p>
       <p>Server binaries and provider flags are operational prerequisites. Azure uses extension allowlisting and preload settings; RDS uses parameter groups; Cloud SQL uses supported extension flags. Preserve existing settings when editing lists. Trunq does not install server packages or restart instances.</p>
       <h3 id="pg-cron">Manage pg_cron jobs</h3>
@@ -387,6 +396,7 @@ ORDER BY status;</code></pre></div>
       <h3 id="audit-inspection">Inspect audit configuration and security</h3>
       <p>Audit tools report visible logging/pgAudit settings, current identity, roles/memberships, table RLS flags, schema ACLs and default ACLs. Foreign-server and replication inspections omit stored options and connection strings that may contain credentials. These are point-in-time inspections, not complete effective-privilege analysis or a durable audit trail.</p>
       <p>pgAudit requires server setup, audit-class configuration and durable log collection. Local query history is editable and clearable. Configure database and cloud control-plane logs, retention and access separately; this update does not ingest provider logs. The <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/administration.md">administration guide</a> includes provider sources, practical examples and the remaining catalog/editor gaps.</p>
+      <figure class="doc__shot"><img src="../assets/shots/audit-settings.webp" alt="Query results for visible PostgreSQL logging and preload settings" width="1440" height="900" loading="lazy"><figcaption>Sample server settings are point-in-time observations, not evidence of complete audit delivery.</figcaption></figure>
     </section>
 
     <section>
@@ -417,6 +427,17 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
         <li><b>Generate SQL</b> from the right-click menu: <code>SELECT</code> / <code>INSERT</code> / <code>UPDATE</code> / <code>DELETE</code>, DDL, function definitions and maintenance commands.</li>
         <li><b>Query plans:</b> <code>EXPLAIN</code> and <code>EXPLAIN ANALYZE</code> are shown visually, with each step's share of the time, loop counts and row-estimate warnings.</li>
       </ul>
+    </section>
+
+    <section>
+      <h2 id="production">Production access and upgrades</h2>
+      <p>Use a dedicated least-privilege login, <code>verify-full</code> TLS, verified pinned SSH host keys and a protected workstation/workspace. A Production label and read-only session default help operators; PostgreSQL privileges enforce access. Test new builds in staging and keep a rollback build and workspace backup.</p>
+      <h3 id="credential-upgrade">Credential and SSH compatibility</h3>
+      <p>Saved database/SSH secrets are now scoped to the target and profile ID. Changing the endpoint, default database, authentication or enabled bastion prevents reuse of the old database password. <b>Re-enter older ID-only saved credentials once after upgrading.</b> Open sessions retain their original identity until disconnected. Legacy/historical entries may require manual OS-keychain cleanup. Native SSH excludes the unresolved RSA timing-advisory dependency: arrange Ed25519/ECDSA user and host keys before upgrading RSA-only configurations.</p>
+      <h3 id="local-data-protection">Local data and resource limits</h3>
+      <p>SQL, snippets, history and exports are unencrypted and may contain sensitive literals. New Unix workspace directories use <code>0700</code>, and config/history/learned-host writes use <code>0600</code>; existing custom directory permissions remain unchanged. Windows follows directory ACLs. Config/history compaction uses private staging and atomic replacement; keep parent directories trusted.</p>
+      <p>History retains at most 5,000 entries in memory and compacts after 501 disk appends, including duplicate queries. Server frames have a 256 MiB bound (1 MiB for diagnostics/notifications/parameter status); retained notices and notifications each have 1,024-item/4 MiB bounds and overflow warnings. These limits do not cap total loaded results or provide durable event delivery. Use streaming exports for large downloads.</p>
+      <p>The dependency scan reports no vulnerable packages after remediation, with four upstream maintenance advisories still tracked. See the <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/production.md">production operations guide</a> and <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/security-review.md">dated security review</a> for evidence, remaining limits and rollout steps. Local history and settings inspections cannot replace independently retained server/control-plane audit logs.</p>
     </section>
 
     <section>
@@ -538,7 +559,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
         </table>
       </div>
       <h3 id="workspace-launch">Start a separate workspace</h3>
-      <p>Set <code>TRUNQ_CONFIG_DIR</code> before launching. It changes settings, history and Trunq's SSH known-hosts location, but does not create a separate OS keychain. Copied profiles keep their IDs and can still refer to the same keychain entries on that computer.</p>
+      <p>Set <code>TRUNQ_CONFIG_DIR</code> before launching. It changes settings, history and Trunq's SSH known-hosts location, but does not create a separate OS keychain. Copied profiles keep their IDs and target fingerprints; unchanged profiles can share scoped keychain entries on that account. A different target selects different credentials, and older ID-only entries require re-entry.</p>
       <div class="codeblock"><pre data-copyable><code>TRUNQ_CONFIG_DIR="$PWD/trunq-workspace" trunq</code></pre></div>
       <p>The example is for macOS/Linux with Trunq on PATH. Windows PowerShell uses <code>$env:TRUNQ_CONFIG_DIR = Join-Path $PWD 'trunq-workspace'</code> before starting the executable.</p>
       <h3 id="backup-restore">Back up and restore</h3>

@@ -34,7 +34,7 @@ a fix and credit you in the release notes unless you prefer otherwise.
   `require` encrypts without validating certificate trust or hostname; the default `prefer` permits
   plaintext if the server declines TLS. Entra/token-command profiles enforce at least `require` over TCP. Token commands default to `verify-full`.
 - SSH host keys are verified against `~/.ssh/known_hosts` and Trunq's own known hosts file. New hosts
-  are trusted on first use; a changed host key is refused.
+  are trusted on first use only when that option is enabled. Disable it for production and provision verified raw keys. Changed keys across algorithms, revoked keys and known-host read failures are refused. Native SSH supports Ed25519/ECDSA; RSA and host certificates are unsupported.
 - Query parameters (`:name`) are always sent as bound parameters, never interpolated into SQL.
 - Trunq has no telemetry. It connects to your databases, SSH servers and configured Entra endpoints. Provider CLIs/custom credential helpers can make their own network connections using their configured identities. Only configure trusted helper executables and review imported profiles before connecting.
 
@@ -42,8 +42,12 @@ a fix and credit you in the release notes unless you prefer otherwise.
 
 Settings, SQL tab text, snippets and query history are ordinary local JSON/JSONL files, not encrypted by Trunq. Credentials or sensitive values written into SQL literals, comments or connection URLs in editor text can therefore be saved as text. Review configuration, history, SQL files and screenshots before attaching them to an issue.
 
-`TRUNQ_CONFIG_DIR` changes the workspace directory but does not create a separate OS keychain. Copied profiles keep their credential identifiers. Workspace backups do not include the keychain, SSH private keys or an Azure CLI login; see [settings and backups](docs/settings.md).
+`TRUNQ_CONFIG_DIR` changes the workspace directory but does not create a separate OS keychain. Copied profiles keep their IDs and target fingerprints; unchanged profiles can share scoped entries on the same account. Target edits no longer reuse the old secret. Upgrades from ID-only password/SSH entries require re-entry; legacy entries are not read automatically. Workspace backups do not include the keychain, SSH private keys or an Azure CLI login; see [settings and backups](docs/settings.md).
 
 The supplied administration queries omit password hashes, FDW secrets and subscription connection strings. Query history remains an editable local convenience, not an audit trail. Use server auditing and independently retained logs for complete database activity records; see [administration](docs/administration.md).
 
 Read-only profiles set PostgreSQL's default transaction mode. Database role privileges are the enforcement mechanism when write access must be restricted. See [the connection reference](docs/connections.md) for password precedence, TLS modes, host-key handling and timeout behaviour.
+
+Configuration/history writes use private files and atomic replacement; Unix append writes reject final-component symlinks and nonregular destinations. Password files readable by group/others are ignored on Unix. Windows requires appropriate ACLs, and parent directories must remain trusted. Local SQL, history and exports are still unencrypted.
+
+See [production operations and upgrade guidance](docs/production.md) and the [dated review findings](docs/security-review.md) for test evidence, SSH compatibility changes, resource limits and unresolved upstream maintenance advisories. The [dependency audit workflow](.github/workflows/security.yml) checks manifest/lockfile changes and runs weekly; no advisory ignore list is configured.

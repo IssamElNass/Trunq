@@ -112,3 +112,9 @@ Keep database events separate from cloud control-plane events (for example chang
 These gaps are explicit: connecting successfully is not proof of full administrative support for a managed service. The [research notes](postgresql-research.md) prioritize further work by capability and measured cost.
 
 The function permission defaults are also visible in [pg_cron’s 1.4 migration](https://github.com/citusdata/pg_cron/blob/main/pg_cron--1.3--1.4.sql).
+
+## Inspect visible audit settings
+
+![Visible PostgreSQL logging and preload settings](screenshots/audit-settings.png)
+
+This native query runs against the disposable PostgreSQL 17 sample server. Absent pgAudit rows mean that this particular server has not loaded those settings, not that a production audit pipeline is complete. For a real rollout, inspect the complete administration recipe and verify a representative event at the retained log destination. See [production operations](production.md#extensions-schedules-and-audit-evidence).

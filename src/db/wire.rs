@@ -26,6 +26,26 @@ use tokio::net::TcpStream;
 
 use super::result::{Column, ResultSet};
 
+const MAX_SERVER_MESSAGE: usize = 256 * 1024 * 1024;
+const MAX_DIAGNOSTIC_MESSAGE: usize = 1024 * 1024;
+const MAX_PENDING_MESSAGES: usize = 1024;
+const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
+
+fn check_message_length(buffer: &[u8]) -> Result<()> {
+    if buffer.len() < 5 {
+        return Ok(());
+    }
+    let length = i32::from_be_bytes(buffer[1..5].try_into().unwrap());
+    if length < 4 {
+        bail!("invalid PostgreSQL server message length");
+    }
+    let limit = if matches!(buffer[0], b'N' | b'E' | b'A' | b'S') { MAX_DIAGNOSTIC_MESSAGE } else { MAX_SERVER_MESSAGE };
+    if length as usize + 1 > limit {
+        bail!("PostgreSQL server message exceeds the {} MiB client limit; use smaller fields or server-side chunking", limit / (1024 * 1024));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SslMode {
     Disable,
@@ -330,6 +350,10 @@ pub struct PgConn {
     pub tx_status: TxStatus,
     pub notices: Vec<Notice>,
     pub notifications: Vec<Notification>,
+    notice_bytes: usize,
+    notices_truncated: bool,
+    notification_bytes: usize,
+    notifications_truncated: bool,
     cancel: CancelToken,
     /// An unnamed portal is open and waiting for more `Execute`s.
     portal_open: bool,
@@ -348,6 +372,10 @@ impl PgConn {
             tx_status: TxStatus::Idle,
             notices: Vec::new(),
             notifications: Vec::new(),
+            notice_bytes: 0,
+            notices_truncated: false,
+            notification_bytes: 0,
+            notifications_truncated: false,
             cancel: CancelToken { params: p.clone(), used_tls, pid: 0, secret: 0 },
             portal_open: false,
         };
@@ -463,7 +491,46 @@ impl PgConn {
     }
 
     fn push_notice(&mut self, e: DbError) {
+        if self.notices.is_empty() {
+            self.notice_bytes = 0;
+            self.notices_truncated = false;
+        }
+        let size = e.severity.len() + e.message.len() + e.detail.as_ref().map_or(0, String::len) + e.hint.as_ref().map_or(0, String::len);
+        if self.notices.len() >= MAX_PENDING_MESSAGES || self.notice_bytes.saturating_add(size) > MAX_PENDING_BYTES {
+            if !self.notices_truncated {
+                self.notices.push(Notice {
+                    severity: "WARNING".into(),
+                    message: "Client notice output truncated; inspect the server logs for complete diagnostics".into(),
+                    detail: None,
+                    hint: None,
+                });
+                self.notices_truncated = true;
+            }
+            return;
+        }
+        self.notice_bytes += size;
         self.notices.push(Notice { severity: e.severity, message: e.message, detail: e.detail, hint: e.hint });
+    }
+
+    fn push_notification(&mut self, notification: Notification) {
+        if self.notifications.is_empty() {
+            self.notification_bytes = 0;
+            self.notifications_truncated = false;
+        }
+        let size = notification.channel.len() + notification.payload.len();
+        if self.notifications.len() >= MAX_PENDING_MESSAGES || self.notification_bytes.saturating_add(size) > MAX_PENDING_BYTES {
+            if !self.notifications_truncated {
+                self.push_notice(DbError {
+                    severity: "WARNING".into(),
+                    message: "Client notification output truncated; this client queue is not a durable event log".into(),
+                    ..Default::default()
+                });
+                self.notifications_truncated = true;
+            }
+            return;
+        }
+        self.notification_bytes += size;
+        self.notifications.push(notification);
     }
 
     async fn flush(&mut self) -> Result<()> {
@@ -475,6 +542,7 @@ impl PgConn {
 
     async fn read_raw(&mut self) -> Result<Message> {
         loop {
+            check_message_length(&self.rbuf)?;
             if let Some(m) = Message::parse(&mut self.rbuf)? {
                 return Ok(m);
             }
@@ -497,7 +565,7 @@ impl PgConn {
                     self.params.insert(ps.name()?.to_string(), ps.value()?.to_string());
                 }
                 Message::NotificationResponse(n) => {
-                    self.notifications.push(Notification { pid: n.process_id(), channel: n.channel()?.to_string(), payload: n.message()?.to_string() })
+                    self.push_notification(Notification { pid: n.process_id(), channel: n.channel()?.to_string(), payload: n.message()?.to_string() })
                 }
                 m => return Ok(m),
             }
@@ -826,6 +894,42 @@ mod live_tests {
 
     fn rt() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+    }
+
+    #[test]
+    fn oversized_headers_are_rejected_before_the_body_is_received() {
+        for (tag, length) in [(b'D', i32::MAX), (b'N', 2 * 1024 * 1024), (b'E', 3), (b'A', -1)] {
+            let mut header = vec![tag];
+            header.extend_from_slice(&length.to_be_bytes());
+            assert!(check_message_length(&header).is_err());
+        }
+        assert!(check_message_length(&[b'D', 0, 0, 0, 4]).is_ok());
+        assert!(check_message_length(&[b'D', 0]).is_ok());
+    }
+
+    #[test]
+    fn diagnostic_flood_is_bounded_and_draining_resets_the_budget() {
+        let Some(p) = params() else { return };
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.unwrap();
+            c.simple_query("DO $$ BEGIN FOR i IN 1..1500 LOOP RAISE NOTICE '%', repeat('x',4096); END LOOP; END $$").await.unwrap();
+            assert!(c.notices.len() <= MAX_PENDING_MESSAGES + 1);
+            assert!(c.notice_bytes <= MAX_PENDING_BYTES);
+            assert!(c.notices.last().unwrap().message.contains("truncated"));
+            c.notices.clear();
+            c.simple_query("DO $$ BEGIN RAISE NOTICE 'after drain'; END $$").await.unwrap();
+            assert_eq!(c.notices.len(), 1);
+            assert_eq!(c.notices[0].message, "after drain");
+            for i in 0..2000 {
+                c.push_notification(Notification { pid: 0, channel: "events".into(), payload: i.to_string() });
+            }
+            assert_eq!(c.notifications.len(), MAX_PENDING_MESSAGES);
+            assert!(c.notices.last().unwrap().message.contains("notification output truncated"));
+            c.notifications.clear();
+            c.push_notification(Notification { pid: 0, channel: "events".into(), payload: "new".into() });
+            assert_eq!(c.notifications.len(), 1);
+            c.terminate().await;
+        });
     }
 
     #[test]

@@ -7,6 +7,7 @@ mod db;
 mod devscript;
 mod export;
 mod sql;
+mod storage;
 mod tabs;
 mod ui;
 mod util;

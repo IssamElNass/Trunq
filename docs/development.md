@@ -11,6 +11,7 @@ cargo fmt --all --check
 cargo build --locked
 cargo test --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
+python3 scripts/check-docs.py
 ```
 
 Three benchmarks are ignored by default. Database and SSH tests return early when their environment variables are absent; a green unit-test run alone does not verify those integrations.
@@ -57,7 +58,7 @@ src/
 
   Steps: `wait:<s>`, `run`, `runall`, `dryrun`, `explain[:analyze]`, `sql:<text>` (separate with `;;`), `open:<schema.table>`,
   `tab:<n>`, `palette:<query>`, `health`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
-  `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn`,
+  `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 
 ## Release and nightly builds
@@ -106,3 +107,19 @@ Run `actionlint .github/workflows/release.yml` when actionlint is available. Kee
 If a nightly is missing, inspect **Actions → Release** for a failed or queued job, check that scheduled workflows are enabled, and confirm that the workflow exists on the default branch. A green package preview does not mean a prerelease was published. Maintainers can request a fresh default-branch snapshot with a manual `nightly` dispatch.
 
 CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) separately checks formatting and Clippy, builds and tests on macOS, Windows and Linux, checks the website, and runs protocol tests against PostgreSQL 13–18.
+
+## Dependency and production checks
+
+Install the pinned scanner outside the project dependencies, then audit the locked graph:
+
+```sh
+cargo install cargo-audit --version 0.22.2 --locked
+cargo audit
+python3 scripts/check-docs.py
+```
+
+[Audit CI](../.github/workflows/security.yml) also runs weekly and retains its JSON result. Review maintenance warnings as well as vulnerability failures; [the current findings](security-review.md#dependency-audit) record the remaining upstream work. Do not add blanket advisory ignores to make a build green.
+
+The SSH fixture uses `TRUNQ_TEST_SSH=user@host:port|/absolute/path/to/ed25519_key` plus `TRUNQ_TEST_DATABASE_URL` as seen from the bastion. The live test checks two channels sharing one login, cancel delivery and releasing the final handle. Use a disposable bastion with verified raw host keys; RSA and SSH host certificates are unsupported. The protocol live suite also exercises diagnostic flooding and queue reset.
+
+To capture only the nine new extension/authentication/audit/chart views, run `python3 scripts/screenshots.py --binary target/debug/trunq --suite new` with a display and the sample database. The default suite captures 21 views. Example cloud forms do not log in or save profiles; extension captures inspect inventory without enabling/updating anything. Review every image for sensitive data before committing.

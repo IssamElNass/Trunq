@@ -36,6 +36,7 @@ cargo fmt --all --check
 cargo build --locked
 cargo test --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
+python3 scripts/check-docs.py
 ```
 
 ### Integration tests against a real server
@@ -54,7 +55,7 @@ CI runs these against PostgreSQL 13 to 18. Without the variable, database tests 
 TRUNQ_SCRIPT="wait:3;run;wait:2;shot:/tmp/query.png;quit" cargo run
 ```
 
-Please attach before/after screenshots to pull requests that change the UI.
+Please attach before/after screenshots to pull requests that change the UI. Use the reproducible [sample capture script](scripts/screenshots.py) with a disposable database; `--suite new` captures the extension/authentication/audit/chart additions. Review images for secrets, personal data and real production endpoints.
 
 ### Website and handbook
 
@@ -87,3 +88,9 @@ The static site lives in `website/` and needs no build step. See [the website gu
 3. The **Release** workflow builds macOS (universal `.dmg`), Linux (`.deb`, `.tar.gz`) and Windows (`.zip`)
    packages and publishes them, with checksums, as a GitHub Release. Release notes come from `CHANGELOG.md`.
 4. Optional macOS signing/notarization: add the `APPLE_*` secrets listed in `.github/workflows/release.yml`.
+
+## Security and documentation review
+
+For authentication, persistence or dependency changes, run `cargo audit` with cargo-audit 0.22.2 and review both vulnerability findings and maintenance warnings. Document credential migrations and compatibility changes. [Production guidance](docs/production.md) and [the review record](docs/security-review.md) explain the current boundaries; report new vulnerabilities privately under [SECURITY.md](SECURITY.md).
+
+When a feature changes, update its task guide, reference/defaults, troubleshooting, changelog and matching browser-handbook text. Preserve existing anchors. Run the local link checker and browser suite; a source review alone does not verify screenshots or live provider behavior.

@@ -35,6 +35,10 @@ All three platform builds and their snapshot unit tests must succeed before publ
 
 To return to stable, close Trunq and install a stable release. Restore a workspace backup if its settings need reverting. Installing an older Debian package may require an explicit version selection or downgrade through the package manager.
 
+## Before upgrading a production workstation
+
+Back up the workspace and review [credential/key compatibility changes](production.md#upgrade-and-credential-changes). Older saved database/SSH secrets require re-entry, and RSA-only SSH configurations need Ed25519/ECDSA. A nightly preview does not replace staging verification or the stable release.
+
 ## Verify a download
 
 Download `SHA256SUMS.txt` from the same release as the asset. Compute that asset's SHA-256 and compare it with the matching filename in the manifest. For example, after substituting the downloaded filename:

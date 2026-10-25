@@ -1,5 +1,28 @@
 # Validation record
 
+## 25 October 2026: production hardening and screenshot follow-up
+
+Linux cloud environment, Rust 1.95.0, PostgreSQL 17.11, a separate pg_cron 1.6.5/pgAudit 17.1 TLS fixture and a real OpenSSH 10.0p2 bastion. Only disposable sample data and test identities were used.
+
+| Check | Result |
+|---|---|
+| `cargo test --locked --all-targets -- --test-threads=1` | 101 passed, 0 failed, 3 opt-in benchmarks ignored; ordinary database configured (14 tests actually connect) |
+| Format, locked build and Clippy with warnings denied | Passed |
+| Credential/storage regressions | Endpoint/default-database/bastion changes isolate secrets; harmless label edits preserve them; repeated SQL compacts disk history; old history retains its latest window; Unix pgpass permissions, private atomic writes and symlink resistance verified |
+| Protocol resource checks | Oversized headers rejected; real 1,500-notice PostgreSQL flood bounded and queue drain resets the budget; notification overflow bounded with feedback |
+| Real TLS/admin fixture | 21 live-test entries passed, 1 benchmark ignored (some entries are local checks or return early); custom CA/hostname rejection, required client certificate, restricted-role extension enable/upgrade, explicit dependencies, bound pg_cron schedule/pause/remove and pgAudit writes exercised |
+| Restricted role with pg_cron loaded | Initially failed because `current_setting('cron.database_name',true)` still enforces privilege checks; switched to visibility-aware `pg_settings` lookup. The restricted-role regression now explicitly requires successful inventory loading and passes. |
+| Real OpenSSH tunnel | Two database channels shared one SSH login; cancellation delivered; the final close left zero strong cached handles. Repeated successfully after RSA removal and private host-key persistence. |
+| `cargo-audit 0.22.2` | Zero vulnerable/yanked packages; four upstream maintenance warnings remain. RustSec database revision `21d909e4c8bd4e14c7aea58bf980c881a0053ab1`. [Findings and compatibility changes](security-review.md#dependency-audit). |
+| Native screenshots | Nine new views captured with `scripts/screenshots.py --suite new`, isolated config unchanged; PNGs and WebPs linked from the guides/handbook. Cloud forms use illustrative values and perform no login. |
+| Markdown | 271 local page/heading/image links resolve across 25 Markdown files; checker now runs in CI |
+| Chromium | 13 browser groups passed, including new production search/navigation and requests for all 14 handbook screenshots, with desktop/mobile themes and existing copy/menu/FAQ behavior |
+| Release metadata | Five routing/identity tests passed; existing nightly schedule remains daily at 02:00 UTC once on the default branch |
+
+[PR #10 checks](https://github.com/IssamElNass/Trunq/pull/10/checks) report the latest remote revision. The previous `49758ab` checkpoint passed [all eleven CI jobs](https://github.com/IssamElNass/Trunq/actions/runs/40142829479) and [Docker smoke](https://github.com/IssamElNass/Trunq/actions/runs/40142829468); those runs predate this hardening. A new dependency-audit workflow adds a separate check.
+
+No live Azure/AWS/Google identity, OS-keychain integration or production provider policy was exercised. Tests do not establish absence of all leaks. The [production guide](production.md) documents one-time secret re-entry, RSA compatibility, local unencrypted SQL/history and remaining resource/audit limitations.
+
 ## 25 October 2026: cloud authentication, extension manager and chart iteration
 
 Checks ran in the Linux cloud environment with Rust 1.95.0, disposable PostgreSQL 17.11 databases and a separate TLS/extension fixture. Actual provider logins were not configured.
@@ -75,7 +98,7 @@ The twelve native client views are captured by [the screenshot script](../script
 
 ## Scope
 
-Real Azure, SSH bastion, keychain, Windows and arm64 runtime tests require their respective environments and credentials; they were not exercised locally. The SSH live test returns without connecting when its environment is absent. Unit coverage of helper code is not a substitute for those integrations.
+Real Azure, OS-keychain, Windows and arm64 runtime tests require their respective environments and credentials; they were not exercised locally. A real OpenSSH bastion was exercised in the latest follow-up above. The SSH live test returns without connecting when its environment is absent. Unit coverage of helper code is not a substitute for those integrations.
 
 [The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 desktop before enabling a multi-platform registry publication. Docker Hub credentials have not been configured or used by this local work.
 

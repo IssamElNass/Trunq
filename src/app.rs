@@ -1339,6 +1339,9 @@ impl App {
             && let Some(outcome) = d.show(ctx)
         {
             if let DialogOutcome::Save(p, pw, ssh_secret) = outcome {
+                if self.profile(p.id).is_some_and(|old| old.credential_target() != p.credential_target()) {
+                    self.passwords.remove(&p.id);
+                }
                 if let Some(secret) = &ssh_secret {
                     p.store_ssh_secret(secret);
                 }
@@ -1498,9 +1501,10 @@ impl App {
             if let Some(yes) = decided {
                 if yes {
                     if let Some(p) = self.profile(pid) {
-                        p.forget_password();
+                        p.forget_credentials();
                     }
                     self.cfg.profiles.retain(|p| p.id != pid);
+                    self.passwords.remove(&pid);
                     self.servers.retain(|s| s.profile_id != pid);
                     self.save_config();
                 }
@@ -2509,7 +2513,12 @@ impl App {
                 self.cfg.settings.theme = if light { ThemeChoice::Light } else { ThemeChoice::Dark };
                 theme::apply(ctx, self.cfg.settings.theme);
             }
-            Step::NewConnection => self.dialog = Some(ConnDialog::new(None)),
+            Step::NewConnection(preset) => self.dialog = Some(ConnDialog::preview(&preset)),
+            Step::Extensions(name) => {
+                if let Some((profile, db)) = profile {
+                    actions.push(Action::OpenExtensions { profile, db, selected: (!name.is_empty()).then_some(name) });
+                }
+            }
             Step::CloseDialogs => {
                 self.dialog = None;
                 self.palette = None;

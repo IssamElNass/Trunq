@@ -18,7 +18,7 @@
 ## First steps
 
 1. Click **New connection** (the plug icon in the top bar).
-2. Paste a URL such as `postgres://user:pass@db.example.com:5432/app?sslmode=require` and press **Apply**,
+2. Paste a URL such as `postgres://analyst@db.example.com:5432/app?sslmode=verify-full` and press **Apply**,
    or fill in host, port, database and user.
 3. Pick an **environment** (production turns red everywhere), press **Test connection**, then **Save**.
 4. The connection appears in the sidebar. Expand it to browse databases, schemas, tables, views, functions and types.
@@ -87,7 +87,7 @@ Open the connection dialog, expand **SSH tunnel** and enable *Connect through an
 - **Authentication**: the running SSH agent (with your default keys as fallback), a private key file (with an optional passphrase), or a password.
 - The database **Host** and **Port** at the top of the dialog are now resolved *from the SSH server*, usually `localhost` or a private IP address.
 
-Host keys are checked against `~/.ssh/known_hosts` and Trunq's own known hosts file. A new host is trusted on first use and recorded. A *changed* host key is refused, because it can mean a man-in-the-middle attack.
+Host keys are checked against `~/.ssh/known_hosts` and Trunq's own known hosts file. A new host is trusted and recorded only when the first-use option is enabled. For production, disable that option and provision verified raw Ed25519/ECDSA host keys. RSA and SSH host certificates are unsupported; see [compatibility and upgrade guidance](production.md#upgrade-and-credential-changes). A *changed* host key is refused, because it can mean a man-in-the-middle attack.
 
 ## Azure Database for PostgreSQL (Microsoft Entra ID)
 
@@ -173,3 +173,9 @@ The [full troubleshooting guide](troubleshooting.md) also covers TLS, failed tra
   verify the new fingerprint with the administrator before updating the old entry in the applicable `known_hosts` file.
 - **The window is blank on an old GPU or a virtual machine**: run with `WGPU_BACKEND=gl` to use OpenGL.
 - **Keychain prompts on macOS**: click *Always Allow* once so Trunq can read its saved passwords.
+
+## New administration and authentication views
+
+[Enable extensions](extensions.md) walks through catalog search, version/schema selection, dependency review and explicit installation. [Cloud authentication](cloud-authentication.md) covers token helpers, Azure application identities and client certificates. Both guides include screenshots from the real client.
+
+For production, read [the operations guide](production.md): least-privilege roles, verified TLS/SSH, credential migration, private workspace storage, bounded diagnostics and independent audit evidence.

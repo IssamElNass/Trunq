@@ -33,7 +33,7 @@ impl QueryTab {
                 let (r, c) = arg.split_once(',').map(|(a, b)| (a.parse().unwrap_or(0), b.parse().unwrap_or(0))).unwrap_or((0, 0));
                 let mut dummy = Vec::new();
                 let empty = HashMap::new();
-                let mut hist = crate::config::History { entries: Vec::new() };
+                let mut hist = crate::config::History::default();
                 let settings = crate::config::Settings::default();
                 let mut ctx = TabCtx {
                     settings: &settings,

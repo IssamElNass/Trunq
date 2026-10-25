@@ -26,7 +26,7 @@ SELECT current_database(), current_user, pg_is_in_recovery(),
        has_database_privilege(current_database(),'CREATE'),
        (SELECT rolsuper FROM pg_roles WHERE rolname=current_user),
        (SELECT setting FROM pg_settings WHERE name='shared_preload_libraries'),
-       current_setting('cron.database_name',true);
+       (SELECT setting FROM pg_settings WHERE name='cron.database_name');
 SELECT nspname FROM pg_namespace
 WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
   AND has_schema_privilege(oid,'USAGE') AND has_schema_privilege(oid,'CREATE') ORDER BY 1;
@@ -635,6 +635,7 @@ mod live_tests {
             query(&mut dialog, &format!("SET ROLE {}", quote_ident(&role)));
             dialog.refresh(&ctx);
             wait(&mut dialog, &ctx, &mut actions);
+            assert!(dialog.ready, "restricted-role inventory failed: {:?}", dialog.error);
             assert!(!dialog.inventory.superuser);
             assert!(!dialog.inventory.can_create);
             dialog.version = old_version.clone();

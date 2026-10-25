@@ -14,6 +14,10 @@ The list comes from `pg_available_extensions` and `pg_available_extension_versio
 
 A normal PostgreSQL role can install a trusted extension when it has the required database/schema privileges. For other extensions, administrator or provider-specific permission may be needed. The dialog shows the role's visible capabilities; PostgreSQL makes the final permission decision. A denied change displays the server's error and leaves the manager usable for another attempt. Read-only connections and recovery databases disable changes.
 
+![Extension catalog with hstore version and SQL preview](screenshots/extensions.png)
+
+Captured against disposable PostgreSQL 17 sample data. The visible inventory depends on the server packages and permissions; opening it does not change the database.
+
 ## Dependencies and upgrades
 
 When a version declares dependencies, the manager lists them. **Also enable required dependencies (CASCADE)** is off by default. Select it when you want PostgreSQL to install missing extension dependencies as part of the operation; the SQL preview includes `CASCADE`. Otherwise enable the dependencies separately first. Upgrades do not add CASCADE automatically.
@@ -23,6 +27,14 @@ For an installed extension, choose a different offered version and use **Update 
 The manager uses a dedicated connection. It does not commit or roll back a query tab's pending transaction. Closing the manager releases its connection; while a change is being applied, its controls remain disabled until the result arrives. **Open SQL in editor** opens the exact generated statement for further editing. Search/filter/version/schema choices are local to the open manager, not persistent server settings.
 
 There is no extension-removal button. Removing extension objects and their dependents needs separate, deliberate SQL review.
+
+![earthdistance dependency details](screenshots/extension-dependencies.png)
+
+The dependency option starts off; enabling it adds CASCADE to the reviewed installation SQL.
+
+![Installed plpgsql extension details](screenshots/extension-installed.png)
+
+Installed entries show the actual version, owner and schema. Apply is unavailable when the chosen version is already installed.
 
 ## Which extension might I need?
 
@@ -40,7 +52,7 @@ These are common search terms; availability depends on the server distribution/p
 | `pg_cron` | Server-side scheduled SQL jobs | Preload/allowlist, scheduler database, worker capacity and grants |
 | `pgaudit` | Database audit events | Preload, audit classes and durable server/provider log collection |
 
-The dialog highlights preload requirements for pg_cron, pgAudit and pg_stat_statements. Other extensions may also need server configuration; generic extension metadata does not describe every prerequisite.
+Settings hidden from the current role remain unknown; they do not prevent inventory loading. The dialog highlights preload requirements for pg_cron, pgAudit and pg_stat_statements. Other extensions may also need server configuration; generic extension metadata does not describe every prerequisite.
 
 ## If enabling fails
 
@@ -57,3 +69,5 @@ The dialog highlights preload requirements for pg_cron, pgAudit and pg_stat_stat
 | Inventory/connection failure | Use Refresh after resolving the reported connection error; changes require a successfully loaded inventory. |
 
 The [administration guide](administration.md) contains the Azure/RDS/Cloud SQL prerequisite matrix and pg_cron/pgAudit workflows. Enabling the extension's SQL objects is one part of setup; installing server binaries, changing cloud flags and restarting an instance remain DBA/provider operations. PostgreSQL documents the [extension creation and trusted-extension rules](https://www.postgresql.org/docs/18/sql-createextension.html).
+
+For production, test upgrades and dependency changes in staging and verify backups first. Use a separate administrative identity where appropriate; [the production guide](production.md#extensions-schedules-and-audit-evidence) explains the client/server boundary.

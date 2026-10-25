@@ -66,3 +66,9 @@ cargo test --release --locked bench_chart_million -- --ignored --nocapture
 ```
 
 The regression suite also checks timestamp offsets, rejects NaN/Infinity coordinates and preserves the source order of bucket extrema and the actual line endpoints.
+
+## Resource bounds alongside performance
+
+Protocol messages and retained diagnostics now have explicit [production resource limits](production.md#bound-resource-use-and-recover-cleanly). They reduce memory exhaustion from malformed frames or notice/notification floods; they do not cap all loaded rows or turn chart decimation into streaming storage. History startup streams only its retained window, and duplicate queries trigger disk compaction. SSH transport caches release their last handle when the final channel closes rather than accumulating idle authenticated sessions.
+
+![Aggregated sample revenue chart](screenshots/chart-revenue.png)

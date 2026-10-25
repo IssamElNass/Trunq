@@ -14,6 +14,7 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--binary', type=Path, default=root / 'target/release/trunq')
 parser.add_argument('--output', type=Path, default=root / 'docs/screenshots')
+parser.add_argument('--suite', choices=['all', 'new'], default='all', help='Capture all views or only cloud/admin additions')
 args = parser.parse_args()
 url = urlparse(os.environ.get('TRUNQ_TEST_DATABASE_URL', ''))
 if url.scheme not in ('postgres', 'postgresql') or not url.hostname:
@@ -35,17 +36,31 @@ config = dict(profiles=[profile], tabs=[dict(title='Orders overview', profile_id
     f"o1/{profile['database']}/shop", f"o1/{profile['database']}/shop.orders"])
 def shot(name):
     return f"shot:{args.output / (name + '.png')}"
-steps = ['resize:1440,900', 'wait:3', 'run', 'wait:2', shot('query'), 'value:1,6', 'wait:1',
+classic_steps = ['resize:1440,900', 'wait:3', 'run', 'wait:2', shot('query'), 'value:1,6', 'wait:1',
     shot('json-tree'), 'close', 'open:shop.orders', 'wait:2', shot('table'), 'card', 'wait:1',
     shot('card'), 'card', 'compare', 'wait:1', shot('compare'), 'close', 'erd:shop', 'wait:2',
     shot('erd'), 'theme:light', 'wait:1', shot('erd-light'), 'theme:dark', 'structure:shop.orders',
     'wait:2', shot('structure'), 'sessions', 'wait:2', shot('sessions'), 'health', 'wait:2',
     shot('health'), 'palette:orders', 'wait:1', shot('palette'), 'close', 'tab:0',
-    'resize:900,620', 'value:1,6', 'wait:1', shot('compact'), 'close', 'wait:2', 'quit']
+    'resize:900,620', 'value:1,6', 'wait:1', shot('compact'), 'close']
+new_steps = ['resize:1440,1000', 'tab:0', 'wait:3', 'run', 'wait:2',
+    'extensions:hstore', 'wait:3', shot('extensions'), 'close',
+    'extensions:earthdistance', 'wait:3', shot('extension-dependencies'), 'close',
+    'extensions:plpgsql', 'wait:3', shot('extension-installed'), 'close',
+    'newconn:aws', 'wait:1', shot('auth-token-command'), 'close',
+    'newconn:azure', 'wait:1', shot('auth-service-principal'), 'close',
+    'resize:1440,1200', 'newconn:tls', 'wait:1', shot('auth-client-certificate'), 'close',
+    'newconn:ssh', 'wait:1', shot('ssh-host-verification'), 'close',
+    'resize:1440,900',
+    "sql:SELECT name, setting, source FROM pg_settings WHERE name IN ('ssl','log_connections','log_disconnections','log_statement','shared_preload_libraries','pgaudit.log') ORDER BY name",
+    'run', 'wait:2', shot('audit-settings'),
+    "sql:SELECT date_trunc('month', placed_at) AS month, sum(total) AS revenue FROM shop.orders GROUP BY 1 ORDER BY 1",
+    'run', 'wait:2', 'chart', 'wait:1', shot('chart-revenue')]
+steps = (classic_steps if args.suite == 'all' else []) + new_steps + ['wait:2', 'quit']
 with tempfile.TemporaryDirectory(prefix='trunq-shots-') as config_dir:
     cfg = Path(config_dir)
     (cfg / 'config.json').write_text(json.dumps(config), encoding='utf-8')
-    env = dict(os.environ, TRUNQ_CONFIG_DIR=config_dir, TRUNQ_SCRIPT=';'.join(steps))
+    env = dict(os.environ, TRUNQ_CONFIG_DIR=config_dir, TRUNQ_SCRIPT=';;'.join(steps))
     # Keep credentials out of configuration, screenshots and shell arguments.
     if url.password:
         escape = lambda v: str(v).replace('\\', '\\\\').replace(':', '\\:')
@@ -56,11 +71,15 @@ with tempfile.TemporaryDirectory(prefix='trunq-shots-') as config_dir:
     started_ns = time.time_ns()
     subprocess.run([str(args.binary.resolve())], env=env, check=True, timeout=300)
     assert json.loads((cfg / 'config.json').read_text()) == config, 'Script overwrote fixture workspace'
-for name in ['query', 'json-tree', 'table', 'card', 'compare', 'erd', 'erd-light', 'structure', 'sessions', 'health', 'palette', 'compact']:
+names = ['extensions', 'extension-dependencies', 'extension-installed', 'auth-token-command',
+         'auth-service-principal', 'auth-client-certificate', 'ssh-host-verification', 'audit-settings', 'chart-revenue']
+if args.suite == 'all':
+    names += ['query', 'json-tree', 'table', 'card', 'compare', 'erd', 'erd-light', 'structure', 'sessions', 'health', 'palette', 'compact']
+for name in names:
     path = args.output / (name + '.png')
     if not path.is_file() or path.stat().st_mtime_ns < started_ns:
         raise SystemExit(f'Missing screenshot: {path}')
     if shutil.which('cwebp'):
         target = root / 'website/assets/shots' / (name + '.webp')
         subprocess.run(['cwebp', '-quiet', '-q', '82', str(path), '-o', str(target)], check=True)
-print(f'Captured 12 client screenshots in {args.output}')
+print(f'Captured {len(names)} client screenshots in {args.output}')

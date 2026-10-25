@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use sha2::Digest as _;
 
 use crate::db::azure::{self, AzureConfig};
 use crate::db::wire::{ConnectParams, SslMode};
@@ -83,8 +84,18 @@ impl Profile {
         matches!(self.auth, AuthMethod::AzureEntra(_))
     }
 
+    pub fn credential_target(&self) -> String {
+        credential_fingerprint(&(self.host.trim(), self.port, &self.user, &self.database, &self.auth, self.ssh.enabled.then_some(&self.ssh)))
+    }
+
+    pub fn ssh_credential_target(&self) -> String {
+        credential_fingerprint(&self.ssh)
+    }
+
     fn keyring_user(&self) -> String {
-        format!("profile-{}", self.id)
+        // Legacy profile-ID-only entries cannot establish which endpoint owns
+        // a secret. Do not fall back to them after a target/profile import.
+        format!("profile-{}-db-{}", self.id, self.credential_target())
     }
 
     pub fn stored_password(&self) -> Option<String> {
@@ -102,7 +113,7 @@ impl Profile {
     }
 
     fn ssh_keyring_user(&self) -> String {
-        format!("profile-{}-ssh", self.id)
+        format!("profile-{}-ssh-{}", self.id, self.ssh_credential_target())
     }
 
     /// SSH password or key passphrase (keychain).
@@ -124,8 +135,17 @@ impl Profile {
         if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, &self.keyring_user()) {
             let _ = e.delete_credential();
         }
+    }
+
+    pub fn forget_credentials(&self) {
+        self.forget_password();
         if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, &self.ssh_keyring_user()) {
             let _ = e.delete_credential();
+        }
+        for legacy in [format!("profile-{}", self.id), format!("profile-{}-ssh", self.id)] {
+            if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, &legacy) {
+                let _ = e.delete_credential();
+            }
         }
     }
 
@@ -230,6 +250,17 @@ impl Profile {
     }
 }
 
+fn credential_fingerprint(value: &impl Serialize) -> String {
+    const HEX: &[u8] = b"0123456789abcdef";
+    let digest = sha2::Sha256::digest(serde_json::to_vec(value).expect("serializing credential identity"));
+    let mut key = String::with_capacity(64);
+    for &byte in digest.iter() {
+        key.push(HEX[(byte >> 4) as usize] as char);
+        key.push(HEX[(byte & 15) as usize] as char);
+    }
+    key
+}
+
 impl PartialOrd for SslMode {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let rank = |m: &SslMode| SslMode::ALL.iter().position(|x| x == m);
@@ -259,7 +290,25 @@ fn pct_decode(s: &str) -> String {
 /// Looks up a password in `~/.pgpass` (or `$PGPASSFILE`).
 pub fn pgpass_lookup(host: &str, port: u16, db: &str, user: &str) -> Option<String> {
     let path = std::env::var("PGPASSFILE").map(PathBuf::from).ok().or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().join(".pgpass")))?;
-    let text = std::fs::read_to_string(path).ok()?;
+    pgpass_from_file(&path, host, port, db, user)
+}
+
+fn pgpass_from_file(path: &std::path::Path, host: &str, port: u16, db: &str, user: &str) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return None;
+        }
+    }
+    let mut text = String::new();
+    file.read_to_string(&mut text).ok()?;
     let port = port.to_string();
     for line in text.lines() {
         if line.starts_with('#') || line.trim().is_empty() {
@@ -422,11 +471,7 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        let dir = config_dir();
-        std::fs::create_dir_all(&dir)?;
-        let tmp = dir.join("config.json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
-        std::fs::rename(tmp, Self::path())?;
+        crate::storage::write_private_atomic(&Self::path(), &serde_json::to_vec_pretty(self)?)?;
         Ok(())
     }
 }
@@ -443,8 +488,10 @@ pub struct HistoryEntry {
     pub rows: Option<u64>,
 }
 
+#[derive(Default)]
 pub struct History {
     pub entries: Vec<HistoryEntry>,
+    appends: usize,
 }
 
 impl History {
@@ -455,34 +502,65 @@ impl History {
     }
 
     pub fn load() -> History {
-        let entries = std::fs::read_to_string(Self::path()).map(|s| s.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()).unwrap_or_default();
-        History { entries }
+        Self::load_from(&Self::path())
+    }
+
+    fn load_from(path: &std::path::Path) -> History {
+        use std::io::BufRead;
+        let mut entries = std::collections::VecDeque::new();
+        let mut count = 0usize;
+        if let Ok(file) = std::fs::File::open(path) {
+            for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+                if let Ok(entry) = serde_json::from_str(&line) {
+                    count = count.saturating_add(1);
+                    entries.push_back(entry);
+                    if entries.len() > Self::MAX {
+                        entries.pop_front();
+                    }
+                }
+            }
+        }
+        History { entries: entries.into(), appends: count.min(501) }
     }
 
     pub fn push(&mut self, e: HistoryEntry) {
+        if let Err(error) = self.push_to(e, &Self::path()) {
+            eprintln!("trunq: could not persist query history: {error}");
+        }
+    }
+
+    fn push_to(&mut self, e: HistoryEntry, path: &std::path::Path) -> Result<()> {
         if let Some(last) = self.entries.last()
             && last.sql == e.sql
             && last.database == e.database
+            && last.profile == e.profile
         {
             self.entries.pop();
         }
         let line = serde_json::to_string(&e).unwrap_or_default();
         self.entries.push(e);
-        let _ = std::fs::create_dir_all(config_dir());
-        if self.entries.len() > Self::MAX + 500 {
+        self.appends = self.appends.saturating_add(1);
+        let over_limit = self.entries.len() > Self::MAX;
+        if over_limit {
             self.entries.drain(..self.entries.len() - Self::MAX);
+        }
+        // Count disk appends, not retained in-memory entries: consecutive
+        // duplicate queries otherwise grow the file forever without compacting.
+        if self.appends > 500 {
             let text: String = self.entries.iter().filter_map(|e| serde_json::to_string(e).ok()).map(|l| l + "\n").collect();
-            let _ = std::fs::write(Self::path(), text);
+            crate::storage::write_private_atomic(path, text.as_bytes())?;
+            self.appends = 0;
         } else {
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(Self::path()) {
-                let _ = writeln!(f, "{line}");
-            }
+            let mut file = crate::storage::open_private_append(path)?;
+            writeln!(file, "{line}")?;
         }
+        Ok(())
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.appends = 0;
         let _ = std::fs::remove_file(Self::path());
     }
 }
@@ -490,6 +568,72 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credentials_are_bound_to_the_endpoint_and_bastion() {
+        let original = Profile::default();
+        let mut changed = original.clone();
+        changed.name = "Production".into();
+        changed.read_only = true;
+        assert_eq!(original.keyring_user(), changed.keyring_user());
+        changed.host = "untrusted.example.com".into();
+        assert_ne!(original.keyring_user(), changed.keyring_user());
+        changed = original.clone();
+        changed.database = "different_database".into();
+        assert_ne!(original.keyring_user(), changed.keyring_user());
+        changed = original.clone();
+        changed.ssh.enabled = true;
+        changed.ssh.host = "bastion".into();
+        assert_ne!(original.keyring_user(), changed.keyring_user());
+        assert_ne!(original.ssh_keyring_user(), changed.ssh_keyring_user());
+        assert!(!original.keyring_user().ends_with(&original.id.to_string()));
+    }
+
+    fn entry(sql: &str, profile: &str) -> HistoryEntry {
+        HistoryEntry { sql: sql.into(), profile: profile.into(), database: "app".into(), at: 0, ms: 1, ok: true, rows: None }
+    }
+
+    #[test]
+    fn repeated_queries_compact_disk_and_profiles_remain_distinct() {
+        let dir = std::env::temp_dir().join(format!("trunq-history-{}", rand::random::<u64>()));
+        let path = dir.join("history.jsonl");
+        let mut history = History::default();
+        for _ in 0..1200 {
+            history.push_to(entry("SELECT 1", "local"), &path).unwrap();
+        }
+        assert_eq!(history.entries.len(), 1);
+        assert!(std::fs::read_to_string(&path).unwrap().lines().count() <= 501);
+        history.push_to(entry("SELECT 1", "production"), &path).unwrap();
+        assert_eq!(history.entries.len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn loading_old_history_retains_only_the_latest_entries() {
+        let dir = std::env::temp_dir().join(format!("trunq-history-load-{}", rand::random::<u64>()));
+        let path = dir.join("history.jsonl");
+        let text: String = (0..5100).map(|i| serde_json::to_string(&entry(&format!("SELECT {i}"), "local")).unwrap() + "\n").collect();
+        crate::storage::write_private_atomic(&path, text.as_bytes()).unwrap();
+        let mut history = History::load_from(&path);
+        assert_eq!(history.entries.len(), 5000);
+        assert_eq!(history.entries[0].sql, "SELECT 100");
+        history.push_to(entry("SELECT 5100", "local"), &path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 5000);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pgpass_rejects_group_or_world_readable_files() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("trunq-pgpass-{}", rand::random::<u64>()));
+        let path = dir.join("pgpass");
+        crate::storage::write_private_atomic(&path, b"localhost:5432:app:reporting:secret\n").unwrap();
+        assert_eq!(pgpass_from_file(&path, "localhost", 5432, "app", "reporting").as_deref(), Some("secret"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(pgpass_from_file(&path, "localhost", 5432, "app", "reporting"), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn new_authentication_fields_preserve_old_profiles_and_require_explicit_application_identity() {

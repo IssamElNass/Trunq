@@ -14,6 +14,8 @@ window.TRUNQ_FAQ = {
   items: [
     { id: "nightly", k: "nightly development snapshot prerelease latest changes", topic: "basics", q: "Where can I get nightly builds?",
       a: 'The Release workflow builds daily default-branch snapshots once it is merged there. Find separate <a href="{repo}/releases?q=nightly&amp;expanded=true">nightly prereleases</a> with platform packages, checksums and BUILD_INFO.txt. Nightlies do not replace stable downloads. See {docs:nightly-builds} for the schedule and setup.' },
+    { id: "credential-upgrade", k: "password keychain upgrade migration rsa ed25519 production security", topic: "connect", q: "Why must I enter my saved password again after upgrading?",
+      a: "Database and SSH secrets are now bound to the connection target. Older ID-only entries are not reused, so re-enter them once for the verified target. Existing sessions keep their identity until disconnected. Native SSH now requires Ed25519/ECDSA. See {docs:credential-upgrade}." },
     { id: "backup", k: "backup restore migrate workspace config settings portable", topic: "privacy", q: "How do I back up or move my workspace?",
       a: "Close Trunq and copy its settings directory, including config.json, history.jsonl and known_hosts when needed. Save SQL files and result exports separately. The folder does not include loaded results, pending edits, database data or the OS keychain. See {docs:backup-restore}." },
     { id: "tls-checks", k: "ssl require verify-full certificate hostname trust", topic: "connect", q: "Does sslmode=require verify my database server?",
@@ -72,7 +74,7 @@ window.TRUNQ_FAQ = {
     { id: "auditing", k: "audit pgaudit logs security grants roles rls", topic: "safety", q: "Does Trunq provide an audit trail?",
       a: "It can inspect visible logging/pgAudit settings and security metadata. Query history is editable, not a server audit trail. Configure pgAudit plus durable provider/server log collection separately. See {docs:audit-inspection}." },
     { id: "ssh", k: "tunnel bastion jump host key agent", topic: "connect", q: "Can I connect through an SSH tunnel or bastion host?",
-      a: "Yes. Add an SSH tunnel to a connection and sign in with your ssh-agent, a key file or a password. All tabs for that server share a single SSH login, and host keys are checked against your known_hosts file." },
+      a: "Yes. Add an SSH tunnel to a connection and sign in with your ssh-agent, a key file or a password. Channels for the same SSH configuration share one login, released after the final channel. Use Ed25519/ECDSA keys and disable first-use trust for pinned production hosts; RSA and host certificates are unsupported. See {docs:ssh}." },
     { id: "url", k: "connection string uri pgpass socket", topic: "connect", q: "Can I paste a connection URL?",
       a: "Yes. Paste something like postgres://user@host:5432/db?sslmode=require and Trunq fills in the form for you. It also reads ~/.pgpass and supports Unix sockets." },
 

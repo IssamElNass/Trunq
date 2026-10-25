@@ -66,7 +66,7 @@ $env:TRUNQ_CONFIG_DIR = Join-Path $PWD 'trunq-workspace'
 Remove-Item Env:TRUNQ_CONFIG_DIR
 ```
 
-The override affects settings, history and Trunq's SSH known-hosts file. It does not create a separate OS keychain. Copying profiles to another workspace preserves their IDs, so those profiles can refer to the same keychain entries on the same computer. Use separate directories for concurrent app instances to avoid competing writes to one configuration.
+The override affects settings, history and Trunq's SSH known-hosts file. It does not create a separate OS keychain. Copying profiles preserves their IDs and target fingerprints, so unchanged profiles can refer to the same keychain entries on the same computer. Changing their target selects different entries; older ID-only entries require credential re-entry after this update. Use separate directories for concurrent app instances to avoid competing writes to one configuration.
 
 In Docker, the supplied image uses `/data` for its workspace and Compose persists that directory in `trunq-data`. See [the Docker guide](docker.md) for file access and the desktop's keychain limitations.
 
@@ -100,3 +100,9 @@ Use **Query history → Clear** to clear history. This does not clear snippets o
 | `TRUNQ_BENCH` | Enable the development benchmark path; suppresses normal workspace saving |
 
 For graphics troubleshooting, use [the troubleshooting guide](troubleshooting.md#blank-window-or-graphics-startup-failure). Developer test and benchmark variables are described in [development](development.md) and [performance](performance.md).
+
+## File protection and history retention
+
+On Unix, Trunq creates new workspace directories with `0700` and writes configuration, history and learned host keys with `0600`. Existing directory permissions are preserved; Windows follows its directory ACLs. Config saves/history compaction stage into a private, exclusive random file before atomic replacement. Keep the parent directory trusted, especially when using `TRUNQ_CONFIG_DIR`.
+
+History loads at most the latest 5,000 valid entries and periodically compacts its disk log after 501 appends. Consecutive duplicate queries still advance that compaction counter. The file can temporarily retain additional older entries between compactions; clearing history does not remove copies in backups or SQL in open editors/snippets. See [production data handling](production.md#protect-local-data).

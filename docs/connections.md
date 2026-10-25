@@ -58,7 +58,7 @@ db.example.com:5432:reporting:analyst:replace-with-your-password
 
 The first four fields match the configured connection values; `*` matches any value. Put specific entries before broad wildcard entries. Escape a literal colon as `\:` and a literal backslash as `\\`. For a Unix socket, match the directory entered as Host. On Windows you can set `PGPASSFILE` explicitly instead of relying on another client's password-file location.
 
-The password file itself contains plaintext credentials. Restrict its access, for example with `chmod 600 ~/.pgpass` on Unix. Turning off **Save in keychain** still allows a password-file fallback. A password typed for a session is remembered in the running app; restarting the app clears that in-memory value.
+The password file itself contains plaintext credentials. Unix files with group/other permission bits are ignored; use `chmod 600 ~/.pgpass`. Windows access follows filesystem ACLs. Turning off **Save in keychain** still allows a password-file fallback. A password typed for a session is remembered in the running app; restarting the app clears that in-memory value.
 
 ## Advanced profile settings
 
@@ -83,7 +83,7 @@ Follow [the SSH setup steps](usage.md#ssh-tunnels). Keep these two endpoints dis
 | SSH host, port, user | The bastion or jump host you can reach from the computer running Trunq |
 | Database Host, Port | PostgreSQL as reached from that SSH server |
 
-Agent, private-key-file and password authentication are supported. Key files may need a passphrase. Trunq checks both `~/.ssh/known_hosts` and the workspace's `known_hosts`; a changed key in either file is refused. Previously unknown keys are trusted on first use and recorded in the workspace file.
+Agent, private-key-file and password authentication are supported. Key files may need a passphrase. Trunq checks both `~/.ssh/known_hosts` and the workspace's `known_hosts`; a changed key in either file is refused. Previously unknown keys are trusted and recorded only when **Trust previously unknown host keys on first use** is enabled (the compatibility default). For production, turn it off and provision independently verified raw host keys. Read/parse errors, revoked matching keys and changes across key algorithms fail closed. Host certificates and OpenSSH CA/wildcard policy are not supported; use exact or hashed raw-key entries. Native SSH supports Ed25519/ECDSA; RSA is excluded because of an unresolved dependency advisory.
 
 For a changed key, compare the reported fingerprint with a trusted administrator or server record before updating the matching old entry. Moving the workspace file does not move your private keys or configure a new SSH agent. Connections using the same SSH configuration share the SSH session, while each database tab still has its own PostgreSQL session.
 
@@ -104,3 +104,11 @@ See [cloud-neutral authentication](cloud-authentication.md) for Azure service pr
 Click the connection count in the status bar to inspect purpose, PID and age, or close a connection. Each session sets an `application_name` such as `Trunq: Query 3`, making it identifiable in `pg_stat_activity`.
 
 Idle query sessions disconnect after 15 minutes only when no query, transaction or fetchable result remains. Running the tab again reconnects it. Closing a tab closes its session and rolls back any uncommitted transaction. Save query text separately when needed; reconnecting does not recover temporary tables or session-local settings from a lost connection.
+
+## Credential migration and target edits
+
+Saved secrets are scoped by profile ID and a target fingerprint. Changing a database endpoint, default database, authentication or enabled bastion prevents forwarding the previous password; SSH changes invalidate the corresponding SSH secret. Labels/colours do not change the target. Re-enter older profile-ID-only saved database and SSH credentials once after this upgrade. Open sessions keep their original identity until disconnected. See [upgrade and cleanup details](production.md#upgrade-and-credential-changes).
+
+![Pinned-host SSH setup](screenshots/ssh-host-verification.png)
+
+This real dialog uses illustrative example endpoints; no example SSH connection was attempted.

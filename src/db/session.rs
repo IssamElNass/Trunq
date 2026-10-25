@@ -299,7 +299,7 @@ impl Session {
             // Remember a manually typed password for the rest of the session.
             if let Some(pw) = &session_password
                 && profile.save_password
-                && !profile.is_azure()
+                && matches!(profile.auth, crate::config::AuthMethod::Password)
             {
                 profile.store_password(pw);
             }

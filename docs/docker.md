@@ -59,3 +59,7 @@ Set repository **Settings → Secrets and variables → Actions**:
 Push a version tag such as `v0.1.0`, or run **Docker → Run workflow → publish**. Without the namespace, the publish job is skipped. Tags produce version and major/minor image tags; stable version tags also update `latest`. Manual runs publish a commit tag. Prereleases do not update `latest`. Both amd64 and arm64 are built for publication; the pre-publication runtime smoke test currently runs on amd64.
 
 No image has been pushed as part of the local implementation. A Docker Hub namespace and token must be configured before publication.
+
+## Production access and local secrets
+
+Keep noVNC on loopback or behind your authenticated transport. A database's least-privilege login and verified PostgreSQL TLS are still required inside the tunnel/container. Protect the persisted workspace and mounted pgpass/certificate/key files; Unix pgpass files must have no group/other access. CLI helper binaries and login environments must exist inside the container. Native SSH supports Ed25519/ECDSA and can require pre-pinned host keys. See [production guidance](production.md) for upgrade and audit boundaries.
