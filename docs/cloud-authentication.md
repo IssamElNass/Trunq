@@ -98,6 +98,7 @@ Illustrative file paths in the native dialog. Protect the real key and verify ce
 | Helper cannot start | Absolute executable path, installation and desktop PATH |
 | Helper timed out | Sign in in a terminal first; disable prompts; inspect wrapper subprocesses |
 | Helper output rejected | Use raw token output; remove JSON, banners and diagnostics from stdout |
+| Token rejected with a password-authentication error | PostgreSQL transports the token as a password; Trunq keeps the token method and does not prompt for an unrelated static password. Check CLI identity/audience/permissions and reconnect. |
 | Token accepted by CLI but database login denied | Resource/audience, cloud, tenant, endpoint, role mapping, IAM grants and token age |
 | Azure application cannot infer a username | Set the provisioned PostgreSQL User explicitly |
 | AWS token fails through a tunnel | Sign with the original RDS endpoint and correct region/user |

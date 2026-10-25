@@ -15,6 +15,28 @@ use super::result::{Column, ResultSet};
 use super::wire::{CancelToken, DbError, Notice, Notification, PgConn, StepOutcome, TxStatus};
 use crate::config::Profile;
 
+fn needs_password_prompt(auth: &crate::config::AuthMethod, missing: bool, message: &str, sqlstate: Option<&str>) -> bool {
+    matches!(auth, crate::config::AuthMethod::Password)
+        && (message.contains("no password supplied") || (missing && message.contains("password authentication failed")) || sqlstate == Some("28P01"))
+}
+
+#[cfg(test)]
+mod authentication_tests {
+    use super::*;
+    use crate::config::AuthMethod;
+
+    #[test]
+    fn rejected_tokens_never_prompt_for_an_unrelated_database_password() {
+        for missing in [false, true] {
+            let message = "password authentication failed";
+            assert!(needs_password_prompt(&AuthMethod::Password, missing, message, Some("28P01")));
+            assert!(!needs_password_prompt(&AuthMethod::TokenCommand(Default::default()), missing, message, Some("28P01")));
+            assert!(!needs_password_prompt(&AuthMethod::AzureEntra(Default::default()), missing, message, Some("28P01")));
+        }
+        assert!(!needs_password_prompt(&AuthMethod::Password, true, "connection refused", None));
+    }
+}
+
 static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
 
 pub fn runtime() -> &'static tokio::runtime::Runtime {
@@ -272,9 +294,7 @@ impl Session {
                 Err(e) => {
                     busy2.store(false, Ordering::SeqCst);
                     let msg = format!("{e:#}");
-                    let needs_password = msg.contains("no password supplied")
-                        || (needs_pw_hint && msg.contains("password authentication failed"))
-                        || e.downcast_ref::<DbError>().is_some_and(|d| d.code == "28P01" && !profile.is_azure());
+                    let needs_password = needs_password_prompt(&profile.auth, needs_pw_hint, &msg, e.downcast_ref::<DbError>().map(|d| d.code.as_str()));
                     send(Event::ConnectFailed { error: msg, needs_password });
                     return;
                 }

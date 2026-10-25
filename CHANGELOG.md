@@ -28,6 +28,7 @@ All notable changes to Trunq are documented here. The format follows
 - PostgreSQL 18 in the protocol test matrix.
 
 ### Fixed
+- Rejected token-command/Entra credentials no longer produce an unrelated static-password prompt.
 - Extension inventory remains usable for restricted roles when pg_cron hides its scheduler setting.
 - Typed, in-memory and saved credentials are bound to the connection target; endpoint edits cannot forward an older password. Older database/SSH keychain entries require one-time re-entry.
 - SSH host-key checks reject algorithm changes, revoked keys and unreadable known-host files; idle tunnels are released after the final channel closes.
