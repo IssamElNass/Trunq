@@ -18,6 +18,7 @@ pub struct ConnDialog {
     pub is_new: bool,
     password: String,
     password_dirty: bool,
+    password_target: String,
     url: String,
     test: Option<(Promise<TestResult>, Instant)>,
     test_result: Option<TestResult>,
@@ -26,6 +27,7 @@ pub struct ConnDialog {
     error: Option<String>,
     ssh_secret: String,
     ssh_secret_dirty: bool,
+    ssh_secret_target: String,
 }
 
 #[allow(clippy::large_enum_variant)] // short-lived, one per dialog close
@@ -36,6 +38,52 @@ pub enum DialogOutcome {
 }
 
 impl ConnDialog {
+    /// Script-only examples; no login, connection or save is performed.
+    pub fn preview(preset: &str) -> Self {
+        let mut dialog = Self::new(None);
+        if preset.is_empty() {
+            return dialog;
+        }
+        dialog.profile.host = "postgres.example.com".into();
+        dialog.profile.user = "reporting".into();
+        dialog.profile.database = "analytics".into();
+        dialog.profile.ssl_mode = SslMode::VerifyFull;
+        dialog.profile.save_password = false;
+        match preset {
+            "aws" => {
+                dialog.profile.host = "analytics.example.eu-west-1.rds.amazonaws.com".into();
+                let mut command = crate::db::credentials::TokenCommand::aws_rds();
+                command.arguments = command.arguments.replace("us-east-1", "eu-west-1");
+                dialog.profile.auth = AuthMethod::TokenCommand(command);
+            }
+            "azure" => {
+                dialog.profile.host = "analytics.postgres.database.azure.com".into();
+                dialog.profile.auth = AuthMethod::AzureEntra(AzureConfig {
+                    flow: AzureFlow::ClientSecret,
+                    tenant: "example.onmicrosoft.com".into(),
+                    client_id: "00000000-0000-0000-0000-000000000000".into(),
+                    client_secret_env: "AZURE_CLIENT_SECRET".into(),
+                    ..Default::default()
+                });
+            }
+            "tls" => {
+                dialog.show_advanced = true;
+                dialog.profile.tls.root_ca = "/etc/trunq/certs/root-ca.pem".into();
+                dialog.profile.tls.client_cert = "/etc/trunq/certs/reporting.pem".into();
+                dialog.profile.tls.client_key = "/etc/trunq/certs/reporting-key.pem".into();
+            }
+            "ssh" => {
+                dialog.profile.ssh.enabled = true;
+                dialog.profile.ssh.host = "bastion.example.com".into();
+                dialog.profile.ssh.user = "operator".into();
+                dialog.profile.ssh.trust_new_hosts = false;
+            }
+            _ => {}
+        }
+        dialog.clear_stale_secrets();
+        dialog
+    }
+
     pub fn new(profile: Option<Profile>) -> ConnDialog {
         let is_new = profile.is_none();
         let profile = profile.unwrap_or_default();
@@ -43,6 +91,7 @@ impl ConnDialog {
             port_text: profile.port.to_string(),
             password: String::new(),
             password_dirty: false,
+            password_target: profile.credential_target(),
             url: String::new(),
             test: None,
             test_result: None,
@@ -50,6 +99,7 @@ impl ConnDialog {
             error: None,
             ssh_secret: String::new(),
             ssh_secret_dirty: false,
+            ssh_secret_target: profile.ssh_credential_target(),
             profile,
             is_new,
         }
@@ -57,6 +107,7 @@ impl ConnDialog {
 
     fn apply_url(&mut self) {
         if let Some((p, pw)) = Profile::from_url(&self.url) {
+            let different_identity = p.host != self.profile.host || p.port != self.profile.port || p.user != self.profile.user;
             let id = self.profile.id;
             let color = self.profile.color;
             let auth = self.profile.auth.clone();
@@ -65,6 +116,13 @@ impl ConnDialog {
             if let Some(pw) = pw {
                 self.password = pw;
                 self.password_dirty = true;
+                self.password_target = self.profile.credential_target();
+            } else if different_identity {
+                // Do not send a password typed for the previous endpoint (or
+                // its profile keychain entry) to an imported, different server.
+                self.password.clear();
+                self.password_dirty = true;
+                self.password_target = self.profile.credential_target();
             }
             self.detect_azure();
             self.url.clear();
@@ -86,13 +144,33 @@ impl ConnDialog {
     }
 
     fn effective_password(&self) -> Option<String> {
-        if self.password_dirty { Some(self.password.clone()) } else { None }
+        (self.password_dirty && matches!(self.profile.auth, AuthMethod::Password) && self.password_target == self.profile.credential_target())
+            .then(|| self.password.clone())
+    }
+
+    fn effective_ssh_secret(&self) -> Option<String> {
+        (self.ssh_secret_dirty && self.ssh_secret_target == self.profile.ssh_credential_target()).then(|| self.ssh_secret.clone())
+    }
+
+    fn clear_stale_secrets(&mut self) {
+        let target = self.profile.credential_target();
+        if target != self.password_target {
+            self.password.clear();
+            self.password_dirty = false;
+            self.password_target = target;
+        }
+        let target = self.profile.ssh_credential_target();
+        if target != self.ssh_secret_target {
+            self.ssh_secret.clear();
+            self.ssh_secret_dirty = false;
+            self.ssh_secret_target = target;
+        }
     }
 
     fn start_test(&mut self, ctx: &egui::Context) {
         let profile = self.profile.clone();
         let pw = self.effective_password();
-        let ssh_secret = self.ssh_secret_dirty.then(|| self.ssh_secret.clone());
+        let ssh_secret = self.effective_ssh_secret();
         let promise = Promise::new();
         let p2 = promise.clone();
         let ctx = ctx.clone();
@@ -135,7 +213,7 @@ impl ConnDialog {
             self.test = None;
         }
         let max_body = (ctx.content_rect().height() - 240.0).max(220.0);
-        let modal = egui::Modal::new(egui::Id::unique("conn_dialog")).frame(w::modal_frame()).show(ctx, |ui| {
+        let modal = egui::Modal::new(egui::Id::unique(("conn_dialog", self.profile.id))).frame(w::modal_frame()).show(ctx, |ui| {
             ui.set_width(600.0);
             let (title, subtitle) = if self.is_new {
                 ("New connection", "PostgreSQL, Azure Database for PostgreSQL or any wire-compatible server")
@@ -171,6 +249,7 @@ impl ConnDialog {
                 self.ssh_section(ui);
                 self.advanced_section(ui);
             });
+            self.clear_stale_secrets();
 
             if let Some(e) = &self.error {
                 ui.add_space(4.0);
@@ -208,11 +287,7 @@ impl ConnDialog {
                         if self.profile.host.trim().is_empty() {
                             self.error = Some("Host is required".into());
                         } else {
-                            outcome = Some(DialogOutcome::Save(
-                                self.profile.clone(),
-                                self.effective_password(),
-                                self.ssh_secret_dirty.then(|| self.ssh_secret.clone()),
-                            ));
+                            outcome = Some(DialogOutcome::Save(self.profile.clone(), self.effective_password(), self.effective_ssh_secret()));
                         }
                     }
                     if w::button(ui, w::Kind::Ghost, "", "Cancel").clicked() {
@@ -287,14 +362,21 @@ impl ConnDialog {
         w::section(ui, "Authentication");
         ui.add_space(6.0);
         w::form_row(ui, "Method", |ui| {
-            let mut azure = self.profile.is_azure();
-            if w::segmented(ui, &mut azure, &[(false, icon::KEY, "Password"), (true, icon::CLOUD, "Microsoft Entra ID")]) {
-                if azure {
+            let mut method = match self.profile.auth {
+                AuthMethod::Password => 0,
+                AuthMethod::AzureEntra(_) => 1,
+                AuthMethod::TokenCommand(_) => 2,
+            };
+            if w::dropdown(ui, &mut method, &[(0, "Password / client certificate"), (1, "Microsoft Entra ID"), (2, "Token command (any provider)")], 0.0) {
+                if method == 1 {
                     let cloud = AzureCloud::from_host(&self.profile.host).unwrap_or_default();
                     self.profile.auth = AuthMethod::AzureEntra(AzureConfig { cloud, ..Default::default() });
                     if self.profile.ssl_mode < SslMode::Require {
                         self.profile.ssl_mode = SslMode::Require;
                     }
+                } else if method == 2 {
+                    self.profile.auth = AuthMethod::TokenCommand(Default::default());
+                    self.profile.ssl_mode = SslMode::VerifyFull;
                 } else {
                     self.profile.auth = AuthMethod::Password;
                 }
@@ -304,13 +386,19 @@ impl ConnDialog {
             let hint = if self.profile.is_azure() { "name@contoso.com (empty = signed-in account)" } else { "postgres" };
             w::input(ui, &mut self.profile.user, hint, Some(icon::USER), 0.0);
         });
+        self.clear_stale_secrets();
         match &mut self.profile.auth {
             AuthMethod::Password => {
-                let hint = if !self.is_new && !self.password_dirty { "Unchanged" } else { "" };
+                let hint = if !self.is_new && !self.password_dirty { "Keychain / pgpass if available" } else { "" };
                 w::form_row(ui, "Password", |ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    if w::password_input(ui, &mut self.password, hint, ui.available_width() - 150.0).changed() {
+                    let changed = ui
+                        .push_id(self.profile.credential_target(), |ui| w::password_input(ui, &mut self.password, hint, ui.available_width() - 150.0))
+                        .inner
+                        .changed();
+                    if changed {
                         self.password_dirty = true;
+                        self.password_target = self.profile.credential_target();
                     }
                     w::checkbox(ui, &mut self.profile.save_password, "Save in keychain");
                 });
@@ -327,17 +415,24 @@ impl ConnDialog {
                 w::form_row(ui, "Tenant", |ui| {
                     w::input(ui, &mut cfg.tenant, "contoso.onmicrosoft.com or tenant id (optional)", Some(icon::GLOBE), 0.0);
                 });
+                if cfg.flow == AzureFlow::ClientSecret {
+                    w::form_row(ui, "Application id", |ui| {
+                        w::code_input(ui, &mut cfg.client_id, "Service principal client id", None, 0.0);
+                    });
+                    w::form_row(ui, "Secret variable", |ui| {
+                        w::code_input(ui, &mut cfg.client_secret_env, "AZURE_CLIENT_SECRET", None, 0.0);
+                    });
+                    w::hint(ui, "Enter the environment variable name, not the secret. Set an explicit PostgreSQL role in User above.");
+                }
                 ui.horizontal(|ui| {
                     ui.add_space(118.0);
-                    ui.vertical(|ui| match azure::cached_token(cfg) {
-                        Some(t) if t.minutes_left() > 0 => {
+                    ui.vertical(|ui| match azure::cached_token_info(cfg, &self.profile.user) {
+                        Some((upn, minutes)) if minutes > 0 => {
                             ui.horizontal(|ui| {
-                                let who = t.upn.as_ref().map(|u| format!(" as {u}")).unwrap_or_default();
-                                ui.label(
-                                    RichText::new(format!("{}  Signed in{who} · token valid {} min", icon::CIRCLE_CHECK, t.minutes_left())).color(pal.success),
-                                );
+                                let who = upn.as_ref().map(|u| format!(" as {u}")).unwrap_or_default();
+                                ui.label(RichText::new(format!("{}  Signed in{who} · token valid {minutes} min", icon::CIRCLE_CHECK)).color(pal.success));
                                 if w::small_button(ui, w::Kind::Ghost, icon::LOG_OUT, "Sign out").clicked() {
-                                    azure::sign_out(cfg);
+                                    azure::sign_out(cfg, &self.profile.user);
                                 }
                             });
                         }
@@ -345,6 +440,34 @@ impl ConnDialog {
                     });
                 });
                 ui.add_space(6.0);
+            }
+            AuthMethod::TokenCommand(command) => {
+                w::form_row(ui, "Preset", |ui| {
+                    if w::small_button(ui, w::Kind::Secondary, "", "Azure CLI").clicked() {
+                        *command = crate::db::credentials::TokenCommand::azure_cli();
+                    }
+                    if w::small_button(ui, w::Kind::Secondary, "", "AWS RDS").clicked() {
+                        *command = crate::db::credentials::TokenCommand::aws_rds();
+                    }
+                    if w::small_button(ui, w::Kind::Secondary, "", "Google Cloud").clicked() {
+                        *command = crate::db::credentials::TokenCommand::google_cloud();
+                    }
+                });
+                w::form_row(ui, "Executable", |ui| {
+                    w::code_input(ui, &mut command.executable, "Path to CLI or credential helper", None, 0.0);
+                });
+                w::form_row(ui, "Arguments", |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut command.arguments).font(theme::mono(12.0)).desired_rows(5).desired_width(ui.available_width()));
+                });
+                w::form_row(ui, "Timeout", |ui| {
+                    w::number(ui, "token_timeout", &mut command.timeout_s, 1, 300, 90.0);
+                    ui.label("seconds");
+                });
+                w::hint(ui, "One argument per line. {host}, {port}, {user}, {database} are substituted. No shell. Prints one token; requires TLS.");
+                w::hint(
+                    ui,
+                    "Use your CLI login for managed identity, federation or SSO. Set the AWS region and use the original RDS endpoint. Keep secrets out of arguments.",
+                );
             }
         }
     }
@@ -380,15 +503,25 @@ impl ConnDialog {
                             }
                         });
                         w::form_row(ui, "Passphrase", |ui| {
-                            if w::password_input(ui, &mut self.ssh_secret, "Only if the key is encrypted", 0.0).changed() {
+                            let changed = ui
+                                .push_id(self.profile.ssh_credential_target(), |ui| {
+                                    w::password_input(ui, &mut self.ssh_secret, "Only if the key is encrypted", 0.0)
+                                })
+                                .inner
+                                .changed();
+                            if changed {
                                 self.ssh_secret_dirty = true;
+                                self.ssh_secret_target = self.profile.ssh_credential_target();
                             }
                         });
                     }
                     crate::db::ssh::SshAuth::Password => {
                         w::form_row(ui, "SSH password", |ui| {
-                            if w::password_input(ui, &mut self.ssh_secret, "", 0.0).changed() {
+                            let changed =
+                                ui.push_id(self.profile.ssh_credential_target(), |ui| w::password_input(ui, &mut self.ssh_secret, "", 0.0)).inner.changed();
+                            if changed {
                                 self.ssh_secret_dirty = true;
+                                self.ssh_secret_target = self.profile.ssh_credential_target();
                             }
                         });
                     }
@@ -398,6 +531,8 @@ impl ConnDialog {
                     ui,
                     "Host and port above are resolved from the SSH server (for example localhost or a private IP). Secrets are stored in the keychain.",
                 );
+                w::checkbox(ui, &mut self.profile.ssh.trust_new_hosts, "Trust previously unknown host keys on first use");
+                w::hint(ui, "Turn this off for production and provision verified raw host keys in known_hosts first.");
             });
         });
     }
@@ -418,6 +553,16 @@ impl ConnDialog {
                 w::number(ui, "conn_timeout", &mut self.profile.connect_timeout_s, 1, 300, 90.0);
                 ui.label(RichText::new("seconds").color(theme::p().faint));
             });
+            w::form_row(ui, "Root CA bundle", |ui| {
+                w::input(ui, &mut self.profile.tls.root_ca, "Absolute path to PEM CA bundle (optional)", None, 0.0);
+            });
+            w::form_row(ui, "Client certificate", |ui| {
+                w::input(ui, &mut self.profile.tls.client_cert, "Absolute path to PEM certificate chain (optional)", None, 0.0);
+            });
+            w::form_row(ui, "Client key", |ui| {
+                w::input(ui, &mut self.profile.tls.client_key, "Absolute path to unencrypted PKCS #8 PEM key", None, 0.0);
+            });
+            w::hint(ui, "Use verify-full to verify the server identity. Certificate paths are saved; private key contents are read only when connecting.");
             if let AuthMethod::AzureEntra(cfg) = &mut self.profile.auth {
                 w::form_row(ui, "Client id", |ui| {
                     w::code_input(ui, &mut cfg.client_id, azure::DEFAULT_CLIENT_ID, None, 0.0);
@@ -455,4 +600,41 @@ pub fn color_picker(ui: &mut Ui, color: &mut Option<[u8; 3]>) {
             }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edits_clear_secrets_before_they_can_be_forwarded_to_another_target() {
+        let mut dialog = ConnDialog::new(None);
+        dialog.password = "database-secret".into();
+        dialog.password_dirty = true;
+        dialog.ssh_secret = "bastion-secret".into();
+        dialog.ssh_secret_dirty = true;
+        dialog.profile.name = "Renamed connection".into();
+        dialog.profile.read_only = true;
+        assert_eq!(dialog.effective_password().as_deref(), Some("database-secret"));
+        dialog.profile.host = "different.example.com".into();
+        assert_eq!(dialog.effective_password(), None);
+        dialog.profile.ssh.host = "other-bastion.example.com".into();
+        assert_eq!(dialog.effective_ssh_secret(), None);
+        dialog.clear_stale_secrets();
+        assert!(dialog.password.is_empty() && dialog.ssh_secret.is_empty());
+        assert!(!dialog.password_dirty && !dialog.ssh_secret_dirty);
+    }
+
+    #[test]
+    fn imported_url_does_not_reuse_another_endpoints_password() {
+        let mut dialog = ConnDialog::new(None);
+        dialog.password = "old-secret".into();
+        dialog.password_dirty = true;
+        dialog.url = "postgres://new_user@other.example/db".into();
+        dialog.apply_url();
+        assert_eq!(dialog.effective_password(), Some(String::new()));
+        dialog.url = "postgres://new_user:new-secret@other.example/db".into();
+        dialog.apply_url();
+        assert_eq!(dialog.effective_password().as_deref(), Some("new-secret"));
+    }
 }

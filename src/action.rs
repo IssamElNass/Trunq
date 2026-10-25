@@ -44,6 +44,11 @@ pub enum Action {
         profile: u64,
         db: String,
     },
+    OpenExtensions {
+        profile: u64,
+        db: String,
+        selected: Option<String>,
+    },
     /// Entity relationship diagram of a database, a schema, or the
     /// neighbourhood of one table (oid, name).
     OpenErd {
@@ -60,7 +65,8 @@ pub enum Action {
     NewProfile,
     Toast(ToastKind, String),
     /// Remember a password typed by the user for this app session.
-    SetPassword(u64, String),
+    /// Profile, credential-target fingerprint, password.
+    SetPassword(u64, String, String),
     ShowHistory,
     SaveTablePrefs(String, crate::config::TablePrefs),
     SaveSnippet {

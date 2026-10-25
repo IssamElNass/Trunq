@@ -66,7 +66,7 @@ $env:TRUNQ_CONFIG_DIR = Join-Path $PWD 'trunq-workspace'
 Remove-Item Env:TRUNQ_CONFIG_DIR
 ```
 
-The override affects settings, history and Trunq's SSH known-hosts file. It does not create a separate OS keychain. Copying profiles to another workspace preserves their IDs, so those profiles can refer to the same keychain entries on the same computer. Use separate directories for concurrent app instances to avoid competing writes to one configuration.
+The override affects settings, history and Trunq's SSH known-hosts file. It does not create a separate OS keychain. Copying profiles preserves their IDs and target fingerprints, so unchanged profiles can refer to the same keychain entries on the same computer. Changing their target selects different entries; older ID-only entries require credential re-entry after this update. Use separate directories for concurrent app instances to avoid competing writes to one configuration.
 
 In Docker, the supplied image uses `/data` for its workspace and Compose persists that directory in `trunq-data`. See [the Docker guide](docker.md) for file access and the desktop's keychain limitations.
 
@@ -79,7 +79,7 @@ In Docker, the supplied image uses `/data` for its workspace and Compose persist
 5. Restore into the destination settings directory while Trunq is closed, or launch it with `TRUNQ_CONFIG_DIR` pointing to the restored copy.
 6. Recheck hosts, environment labels, file paths and SSH key paths on the destination computer. Supply credentials there through its keychain, password file or sign-in flow.
 
-Copying the workspace does not export the OS keychain, a running SSH agent or the Azure CLI login. A workspace backup also does not contain the database's schemas or rows; database backups need PostgreSQL backup tooling.
+Copying the workspace does not export the OS keychain, a running SSH agent, provider CLI logins, secret environment values or TLS certificate/key files. Helper executable/argument configuration and TLS paths do move; review those before connecting in the new workspace. A workspace backup also does not contain the database's schemas or rows; database backups need PostgreSQL backup tooling.
 
 ## Reset settings or remove history
 
@@ -93,8 +93,16 @@ Use **Query history → Clear** to clear history. This does not clear snippets o
 |---|---|
 | `TRUNQ_CONFIG_DIR` | Override the local workspace directory |
 | `PGPASSFILE` | Select a PostgreSQL password file |
+| `AZURE_CLIENT_SECRET` (or configured variable name) | Supply the native service-principal secret to the app process |
+| Provider CLI environment/profile selectors | Inherited by token helpers; use explicit CLI arguments or launch environment to select the intended identity |
 | `WGPU_BACKEND=gl` | Request OpenGL when the default graphics backend does not work |
 | `TRUNQ_SCRIPT` | Drive development UI runs; suppresses normal workspace saving |
 | `TRUNQ_BENCH` | Enable the development benchmark path; suppresses normal workspace saving |
 
 For graphics troubleshooting, use [the troubleshooting guide](troubleshooting.md#blank-window-or-graphics-startup-failure). Developer test and benchmark variables are described in [development](development.md) and [performance](performance.md).
+
+## File protection and history retention
+
+On Unix, Trunq creates new workspace directories with `0700` and writes configuration, history and learned host keys with `0600`. Existing directory permissions are preserved; Windows follows its directory ACLs. Config saves/history compaction stage into a private, exclusive random file before atomic replacement. Keep the parent directory trusted, especially when using `TRUNQ_CONFIG_DIR`.
+
+History loads at most the latest 5,000 valid entries and periodically compacts its disk log after 501 appends. Consecutive duplicate queries still advance that compaction counter. The file can temporarily retain additional older entries between compactions; clearing history does not remove copies in backups or SQL in open editors/snippets. See [production data handling](production.md#protect-local-data).

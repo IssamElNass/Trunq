@@ -51,10 +51,15 @@ Development snapshots are documented under [nightly builds](docs/install.md#nigh
 - **Results:** paged server cursors, virtualised grid, search, filters, sorting, pinned comparisons and charts.
 - **Data:** inline row editing with SQL preview, CSV import and five export formats with explicit row scopes.
 - **Diagnostics:** blocking sessions, live query progress, EXPLAIN plans, database health and migration warnings.
-- **Connections:** TLS, SSH tunnels, Microsoft Entra ID, read-only profiles and production labels.
+- **Connections:** verified TLS/client certificates, SSH tunnels, Microsoft Entra ID, Azure service principals and cloud-neutral token helpers for AWS/Google/custom brokers.
+- **Administration:** searchable extension manager with version/schema/dependency choices, pg_cron templates and audit/security inspections.
 - **Navigation:** command palette, object tree, table structure and ER diagrams.
 
 See the [feature reference and screenshots](docs/features.md), or follow the [user guide](docs/usage.md).
+
+<p><img src="docs/screenshots/extensions.png" alt="Searchable extension manager showing hstore version selection and SQL preview" width="900"></p>
+
+For production, use verified TLS, least-privilege roles and pinned SSH keys. This update requires re-entering older saved credentials and changes native SSH key compatibility; read the [upgrade guidance](docs/production.md#upgrade-and-credential-changes).
 
 ## Fast by design
 
@@ -63,7 +68,7 @@ Only visible grid cells are rendered. Results arrive in pages and live in compac
 ## First steps
 
 1. Click **New connection** (the plug icon in the top bar).
-2. Paste a URL such as `postgres://user:pass@db.example.com:5432/app?sslmode=require` and press **Apply**,
+2. Paste a URL such as `postgres://analyst@db.example.com:5432/app?sslmode=verify-full` and press **Apply**,
    or fill in host, port, database and user.
 3. Pick an **environment** (production turns red everywhere), press **Test connection**, then **Save**.
 4. The connection appears in the sidebar. Expand it to browse databases, schemas, tables, views, functions and types.
@@ -79,7 +84,9 @@ Passwords are saved in your operating system keychain. Trunq also understands `~
 |---|---|
 | Install a release or build from source | [Installation](docs/install.md) |
 | Query, edit, import and export | [Using Trunq](docs/usage.md) · [Practical workflows](docs/workflows.md) |
-| Configure TLS, pgpass, SSH and Azure | [Connections](docs/connections.md) |
+| Configure TLS, pgpass, SSH and Azure | [Connections](docs/connections.md) · [Cloud authentication](docs/cloud-authentication.md) |
+| Enable extensions, schedules and auditing | [Extension manager](docs/extensions.md) · [Administration](docs/administration.md) |
+| Prepare production access or review security changes | [Production guide](docs/production.md) · [Security review](docs/security-review.md) |
 | Change settings or back up a workspace | [Settings and backups](docs/settings.md) |
 | Diagnose an error | [Troubleshooting](docs/troubleshooting.md) |
 | Browse features and screenshots | [Feature reference](docs/features.md) |
@@ -116,7 +123,9 @@ Enable **SSH tunnel** in the connection dialog. The database host is resolved fr
 
 ## Azure Database for PostgreSQL (Microsoft Entra ID)
 
-Choose **Microsoft Entra ID** authentication and the matching Azure cloud. Browser, device-code and Azure CLI sign-in are supported. [Azure setup](docs/usage.md#azure-database-for-postgresql-microsoft-entra-id).
+Choose **Microsoft Entra ID** authentication and the matching Azure cloud. Browser, device-code, Azure CLI and service-principal sign-in are supported. Token commands add AWS RDS IAM, Google Cloud SQL IAM and custom brokers; PEM CA/client certificates are configurable. [Cloud-neutral setup](docs/cloud-authentication.md).
+
+Right-click a database → **Manage extensions…** to search, choose a version/schema and enable or update extensions. [Extension quick start](docs/extensions.md). **Database tools** adds pg_cron job templates, audit/security inspections and replication/foreign-server inventories. [Administration guide and current limits](docs/administration.md).
 
 ## Keyboard shortcuts
 

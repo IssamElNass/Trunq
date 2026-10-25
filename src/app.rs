@@ -75,6 +75,7 @@ impl Server {
         }
     }
     fn disconnect(&mut self) {
+        self.password_input.clear();
         self.root = None;
         self.dbs = None;
         self.dbs_promise = None;
@@ -131,6 +132,7 @@ pub struct App {
     pending_ddl: Vec<(u64, BatchPromise)>,
     palette: Option<(String, usize)>,
     import: Option<crate::ui::import::ImportDialog>,
+    extensions: Option<crate::ui::extensions::ExtensionDialog>,
     pending_actions: Vec<Action>,
     /// DDL being fetched for "Copy DDL": (label, result)
     pending_copy: Vec<(String, BatchPromise)>,
@@ -210,6 +212,7 @@ impl App {
             pending_ddl: Vec::new(),
             palette: None,
             import: None,
+            extensions: None,
             pending_actions: Vec::new(),
             pending_copy: Vec::new(),
             dirty_config: false,
@@ -366,6 +369,12 @@ impl App {
                     self.tabs.push(Tab::Health(crate::tabs::health::HealthTab::new(profile, &db)));
                     self.active = self.tabs.len() - 1;
                 }
+                Action::OpenExtensions { profile, db, selected } => {
+                    if let Some(p) = self.profile(profile).cloned() {
+                        let password = self.passwords.get(&profile).cloned();
+                        self.extensions = Some(crate::ui::extensions::ExtensionDialog::new(p, db, selected, password, ui.ctx()));
+                    }
+                }
                 Action::OpenDashboard { profile } => {
                     if let Some(i) = self.tabs.iter().position(|t| matches!(t, Tab::Sessions(s) if s.profile_id == profile)) {
                         self.active = i;
@@ -390,8 +399,10 @@ impl App {
                 }
                 Action::NewProfile => self.dialog = Some(ConnDialog::new(None)),
                 Action::Toast(k, m) => self.toast(k, m),
-                Action::SetPassword(id, pw) => {
-                    self.passwords.insert(id, pw);
+                Action::SetPassword(id, target, pw) => {
+                    if self.profile(id).is_some_and(|profile| profile.credential_target() == target) {
+                        self.passwords.insert(id, pw);
+                    }
                 }
                 Action::ShowHistory => self.show_history = true,
                 Action::SaveTablePrefs(key, prefs) => {
@@ -707,11 +718,15 @@ impl App {
                     ui.label(RichText::new(format!("{} {}", icon::CIRCLE_X, first_line(&err))).small().color(pal.danger)).on_hover_text(&err);
                     ui.horizontal(|ui| {
                         if needs_pw {
-                            let r = ui.add(egui::TextEdit::singleline(&mut server.password_input).password(true).hint_text("password").desired_width(130.0));
+                            let r = ui
+                                .push_id(profile.credential_target(), |ui| {
+                                    ui.add(egui::TextEdit::singleline(&mut server.password_input).password(true).hint_text("password").desired_width(130.0))
+                                })
+                                .inner;
                             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                             if (ui.small_button("Connect").clicked() || enter) && !server.password_input.is_empty() {
                                 let pw = std::mem::take(&mut server.password_input);
-                                actions.push(Action::SetPassword(pid, pw.clone()));
+                                actions.push(Action::SetPassword(pid, profile.credential_target(), pw.clone()));
                                 server.disconnect();
                                 server.root = Some(Session::connect(&profile, &profile.database, "Object browser", Some(pw), ui.ctx()));
                             }
@@ -759,6 +774,10 @@ impl App {
                 actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: String::new(), run: false });
             }
             r.context_menu(|ui| {
+                if w::menu_item(ui, icon::PLUG, "Manage extensions…").clicked() {
+                    actions.push(Action::OpenExtensions { profile: pid, db: db.clone(), selected: None });
+                    ui.close();
+                }
                 if w::menu_item(ui, icon::FILE_PLUS, "New query").clicked() {
                     actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: String::new(), run: false });
                     ui.close();
@@ -775,6 +794,14 @@ impl App {
                     actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: meta::SLOW_QUERIES_SQL.to_string(), run: false });
                     ui.close();
                 }
+                ui.menu_button("Database tools", |ui| {
+                    for recipe in crate::db::admin::RECIPES {
+                        if w::menu_item(ui, icon::CODE, recipe.label).clicked() {
+                            actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: recipe.sql.into(), run: false });
+                            ui.close();
+                        }
+                    }
+                });
                 if w::menu_item(ui, icon::REFRESH, "Refresh schema").clicked() {
                     actions.push(Action::RefreshCatalog { profile: pid, db: db.clone() });
                     ui.close();
@@ -816,14 +843,24 @@ impl App {
                 continue;
             };
             let user_schemas = cat.schemas.iter().filter(|s| !s.is_system).count();
+            database_objects_tree(ui, node, &cat, pid, &db, filter, actions);
             for schema in &cat.schemas {
                 let matches = |n: &str| filter.is_empty() || n.to_lowercase().contains(filter);
-                let any_match = filter.is_empty() || schema.relations.iter().any(|r| matches(&r.name)) || schema.functions.iter().any(|f| matches(&f.name));
+                let any_match = filter.is_empty()
+                    || schema.relations.iter().any(|r| matches(&r.name))
+                    || schema.functions.iter().any(|f| matches(&f.name))
+                    || schema.types.iter().any(|t| matches(&t.name));
                 if !any_match {
                     continue;
                 }
                 // Hide empty "public" when other schemas exist.
-                if schema.name == "public" && schema.relations.is_empty() && schema.functions.is_empty() && user_schemas > 1 && filter.is_empty() {
+                if schema.name == "public"
+                    && schema.relations.is_empty()
+                    && schema.functions.is_empty()
+                    && schema.types.is_empty()
+                    && user_schemas > 1
+                    && filter.is_empty()
+                {
                     continue;
                 }
                 let skey = schema.name.clone();
@@ -1039,15 +1076,16 @@ impl App {
                         }
                     }
                 }
-                if !schema.types.is_empty() && filter.is_empty() {
+                let types: Vec<_> = schema.types.iter().filter(|t| matches(&t.name)).collect();
+                if !types.is_empty() {
                     let gkey = format!("{}/Types", schema.name);
-                    let gopen = node.open.contains(&gkey);
-                    let (r, _) = tree_row(ui, 3, Some(gopen), icon::TYPE, pal.dim, "Types", &schema.types.len().to_string(), None, false, false);
+                    let gopen = node.open.contains(&gkey) || !filter.is_empty();
+                    let (r, _) = tree_row(ui, 3, Some(gopen), icon::TYPE, pal.dim, "Types", &types.len().to_string(), None, false, false);
                     if r.clicked() && !node.open.remove(&gkey) {
                         node.open.insert(gkey.clone());
                     }
                     if gopen {
-                        for t in &schema.types {
+                        for t in types {
                             let kind = match t.kind {
                                 'e' => "enum",
                                 'd' => "domain",
@@ -1298,11 +1336,19 @@ impl App {
 
     fn overlays(&mut self, ctx: &egui::Context) {
         let pal = theme::p();
+        if let Some(dialog) = &mut self.extensions
+            && dialog.show(ctx, &mut self.pending_actions)
+        {
+            self.extensions = None;
+        }
         // connection dialog
         if let Some(d) = &mut self.dialog
             && let Some(outcome) = d.show(ctx)
         {
             if let DialogOutcome::Save(p, pw, ssh_secret) = outcome {
+                if self.profile(p.id).is_some_and(|old| old.credential_target() != p.credential_target()) {
+                    self.passwords.remove(&p.id);
+                }
                 if let Some(secret) = &ssh_secret {
                     p.store_ssh_secret(secret);
                 }
@@ -1462,9 +1508,10 @@ impl App {
             if let Some(yes) = decided {
                 if yes {
                     if let Some(p) = self.profile(pid) {
-                        p.forget_password();
+                        p.forget_credentials();
                     }
                     self.cfg.profiles.retain(|p| p.id != pid);
+                    self.passwords.remove(&pid);
                     self.servers.retain(|s| s.profile_id != pid);
                     self.save_config();
                 }
@@ -2162,6 +2209,22 @@ impl App {
         for s in &self.servers {
             for (db, n) in &s.nodes {
                 items.push((
+                    icon::PLUG,
+                    pal.accent,
+                    format!("Manage extensions · {db}"),
+                    "enable, versions, dependencies".into(),
+                    PaletteCmd::Act(Action::OpenExtensions { profile: s.profile_id, db: db.clone(), selected: None }),
+                ));
+                for recipe in crate::db::admin::RECIPES {
+                    items.push((
+                        icon::CODE,
+                        pal.dim,
+                        format!("{} · {db}", recipe.label),
+                        "database tools".into(),
+                        PaletteCmd::Act(Action::NewQuery { profile: s.profile_id, db: db.clone(), sql: recipe.sql.into(), run: false }),
+                    ));
+                }
+                items.push((
                     icon::NETWORK,
                     pal.accent,
                     format!("ER diagram · {db}"),
@@ -2457,11 +2520,17 @@ impl App {
                 self.cfg.settings.theme = if light { ThemeChoice::Light } else { ThemeChoice::Dark };
                 theme::apply(ctx, self.cfg.settings.theme);
             }
-            Step::NewConnection => self.dialog = Some(ConnDialog::new(None)),
+            Step::NewConnection(preset) => self.dialog = Some(ConnDialog::preview(&preset)),
+            Step::Extensions(name) => {
+                if let Some((profile, db)) = profile {
+                    actions.push(Action::OpenExtensions { profile, db, selected: (!name.is_empty()).then_some(name) });
+                }
+            }
             Step::CloseDialogs => {
                 self.dialog = None;
                 self.palette = None;
                 self.import = None;
+                self.extensions = None;
                 self.show_connections = false;
                 self.show_settings = false;
                 self.show_history = false;
@@ -2595,10 +2664,15 @@ fn first_line(s: &str) -> String {
 
 /// A collapsible metadata group below a relation or server.
 fn object_group(ui: &mut Ui, open: &mut HashSet<String>, key: String, depth: usize, ico: &str, label: &str, count: usize) -> bool {
+    object_group_filtered(ui, open, key, depth, ico, label, count, false)
+}
+
+#[allow(clippy::too_many_arguments)] // tree row presentation plus expansion policy
+fn object_group_filtered(ui: &mut Ui, open: &mut HashSet<String>, key: String, depth: usize, ico: &str, label: &str, count: usize, force_open: bool) -> bool {
     if count == 0 {
         return false;
     }
-    let expanded = open.contains(&key);
+    let expanded = force_open || open.contains(&key);
     let (r, _) = tree_row(ui, depth, Some(expanded), ico, theme::p().dim, label, &count.to_string(), None, false, false);
     if r.clicked() && !open.remove(&key) {
         open.insert(key);
@@ -2689,6 +2763,66 @@ fn server_objects_tree(ui: &mut Ui, server: &mut Server, profile: &Profile, filt
         for (name, owner, location) in spaces {
             let (r, _) = tree_row(ui, 2, None, icon::DATABASE, pal.dim, name, owner, None, false, false);
             r.on_hover_text(format!("Owner: {owner}\n{location}"));
+        }
+    }
+}
+
+fn database_objects_tree(ui: &mut Ui, node: &mut DbNode, cat: &Catalog, pid: u64, db: &str, filter: &str, actions: &mut Vec<Action>) {
+    let matches = |name: &str| filter.is_empty() || name.to_lowercase().contains(filter);
+    let extensions: Vec<_> = cat.extensions.iter().filter(|(name, _)| matches(name)).collect();
+    let extensions_key = "db/extensions".to_owned();
+    let extensions_open = node.open.contains(&extensions_key) || !filter.is_empty();
+    if !extensions.is_empty() {
+        let (response, _) = tree_row(ui, 2, Some(extensions_open), icon::PLUG, theme::p().dim, "Extensions", &extensions.len().to_string(), None, false, false);
+        if response.clicked() && !node.open.remove(&extensions_key) {
+            node.open.insert(extensions_key);
+        }
+        if response.double_clicked() {
+            actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: None });
+        }
+        response.on_hover_text("Double-click or right-click to manage available extensions").context_menu(|ui| {
+            if w::menu_item(ui, icon::PLUG, "Manage extensions…").clicked() {
+                actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: None });
+                ui.close();
+            }
+        });
+    }
+    if extensions_open {
+        for (name, version) in extensions {
+            let (r, _) = tree_row(ui, 3, None, icon::PLUG, theme::p().dim, name, version, None, false, false);
+            if r.double_clicked() {
+                actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: Some(name.clone()) });
+            }
+            r.context_menu(|ui| {
+                if w::menu_item(ui, icon::PLUG, "Manage extension…").clicked() {
+                    actions.push(Action::OpenExtensions { profile: pid, db: db.into(), selected: Some(name.clone()) });
+                    ui.close();
+                }
+                for (label, sql) in [
+                    ("Available versions and requirements", crate::db::admin::extension_details(name)),
+                    ("Update extension · review SQL", crate::db::admin::extension_update(name)),
+                    ("Manage all extensions", crate::db::admin::EXTENSIONS.into()),
+                ] {
+                    if w::menu_item(ui, icon::CODE, label).clicked() {
+                        actions.push(Action::NewQuery { profile: pid, db: db.into(), sql, run: false });
+                        ui.close();
+                    }
+                }
+            });
+        }
+    }
+    let triggers: Vec<_> = cat.event_triggers.iter().filter(|(name, _, _, _)| matches(name)).collect();
+    if object_group_filtered(ui, &mut node.open, "db/event-triggers".into(), 2, icon::ZAP, "Event triggers", triggers.len(), !filter.is_empty()) {
+        for (name, event, enabled, function) in triggers {
+            let (r, _) = tree_row(ui, 3, None, icon::ZAP, theme::p().dim, name, if *enabled { event } else { "disabled" }, None, false, false);
+            r.on_hover_text(format!("{event}\n{function}"));
+        }
+    }
+    let publications: Vec<_> = cat.publications.iter().filter(|(name, _, _)| matches(name)).collect();
+    if object_group_filtered(ui, &mut node.open, "db/publications".into(), 2, icon::NETWORK, "Publications", publications.len(), !filter.is_empty()) {
+        for (name, all, operations) in publications {
+            let (r, _) = tree_row(ui, 3, None, icon::NETWORK, theme::p().dim, name, operations, None, false, false);
+            r.on_hover_text(if *all { "All tables" } else { "Selected tables" });
         }
     }
 }
@@ -2967,5 +3101,18 @@ impl RelKind {
             RelKind::Foreign => icon::GLOBE,
             RelKind::Sequence => icon::HASH,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browser_disconnect_discards_unsent_password_input() {
+        let mut server = Server::new(1);
+        server.password_input = "old-target-secret".into();
+        server.disconnect();
+        assert!(server.password_input.is_empty());
     }
 }

@@ -7,6 +7,14 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Production deployment/upgrade guide, dated security findings, nine new native screenshots and automated Markdown link/image checks.
+- Weekly and dependency-change RustSec audit with retained JSON reports.
+- Strict pinned-host SSH option; native SSH now requires Ed25519/ECDSA after removing the unresolved RSA timing advisory dependency.
+- Searchable extension manager for all server-provided extensions, with version/schema selection, opt-in dependencies, direct enable/update, read-only guards and automatic catalog refresh.
+- Cloud-neutral token commands with Azure CLI, AWS RDS and Google Cloud presets; native Azure service-principal secrets from environment variables.
+- Per-profile PEM CA bundles and TLS client certificates with PKCS #8 keys.
+- Database tools for extension inventory/update SQL, pg_cron job templates, audit/security inspection, foreign data and replication; tree groups for extensions, event triggers and publications.
+- Cloud-authentication and administration guides with provider prerequisites, audit-log setup and explicit feature gaps.
 - Daily default-branch nightly prereleases with macOS, Windows and Linux packages, checksums, source provenance and manual triggering; packaging changes are built on pull requests without publication.
 - Connection/TLS/password reference, settings and workspace backup guide, practical query and diagnostic workflows, and expanded troubleshooting.
 - Task-based documentation index, separate installation, usage, feature and developer guides, and a shorter project README.
@@ -20,6 +28,19 @@ All notable changes to Trunq are documented here. The format follows
 - PostgreSQL 18 in the protocol test matrix.
 
 ### Fixed
+- Rejected token-command/Entra credentials no longer produce an unrelated static-password prompt.
+- Extension inventory remains usable for restricted roles when pg_cron hides its scheduler setting.
+- Typed, in-memory and saved credentials are bound to the connection target; endpoint edits cannot forward an older password. Older database/SSH keychain entries require one-time re-entry.
+- SSH host-key checks reject algorithm changes, revoked keys and unreadable known-host files; idle tunnels are released after the final channel closes.
+- Config/history writes use private exclusive staging and Unix no-follow append protection; insecure Unix pgpass permissions are rejected.
+- Duplicate SQL now triggers history compaction; startup retains at most 5,000 history entries.
+- Oversized PostgreSQL frames and retained notice/notification queues have explicit resource bounds and truncation feedback.
+- Updated crypto-bigint/ctutils timing fixes and replaced the yanked clipboard-win version.
+- Chart frames reuse sorted/parsed data and pixel-decimated geometry; timestamp offsets, finite-number handling and extrema order are corrected.
+- Azure interactive token caches distinguish configured users; CLI authentication respects account changes and has bounded execution.
+- TLS negotiation and local sign-in redirect reads cannot wait indefinitely; malformed Unicode OAuth percent escapes do not panic.
+- URL import clears a previous endpoint's password when the identity changes.
+- Sidebar search includes schema types, type-only public schemas remain visible, and publication operations include TRUNCATE.
 - Failed or cancelled exports preserve an existing destination; successful exports replace it after staging in the same directory.
 - CSV exports distinguish empty strings from NULL, and SQL exports quote non-finite numeric values.
 - Failed table saves roll back their changes and recover the connection; saves inside a user transaction use savepoints.

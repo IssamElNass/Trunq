@@ -63,8 +63,12 @@ Build the release client and load `dev/sample.sql` into a disposable database, t
 TRUNQ_TEST_DATABASE_URL=postgres://… python3 scripts/screenshots.py
 ```
 
-The script uses a temporary configuration, verifies it was not overwritten, captures twelve real client views and converts them with `cwebp` when installed. To convert existing PNGs manually, run from the repository root:
+The script uses a temporary configuration, verifies it was not overwritten, captures 21 real client views and converts them with `cwebp` when installed. To convert existing PNGs manually, run from the repository root:
 
 ```bash
 for f in docs/screenshots/*.png; do cwebp -q 82 "$f" -o "website/assets/shots/$(basename "$f" .png).webp"; done
 ```
+
+For the nine new extension/authentication/audit/chart views alone, add `--suite new`; a debug binary can be selected with `--binary target/debug/trunq`. Cloud connection screenshots contain example endpoints and blank secrets, not successful provider logins. Extension screenshots inspect the disposable server without changing it. Link PNGs from Markdown guides and corresponding WebP images from the handbook, with descriptive alt text and a caption explaining any example profile.
+
+Run `python3 scripts/check-docs.py` from the repository root as well as the browser suite. The checker resolves local Markdown page/heading/image links, including hidden GitHub templates.

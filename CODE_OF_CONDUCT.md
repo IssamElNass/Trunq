@@ -11,7 +11,7 @@ This project follows the [Contributor Covenant, version 2.1](https://www.contrib
 
 ## Scope
 
-This applies to all project spaces: issues, pull requests, discussions: and to anyone representing
+This applies to all project spaces: issues, pull requests and discussions, and to anyone representing
 the project elsewhere.
 
 ## Enforcement

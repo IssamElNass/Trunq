@@ -11,20 +11,27 @@ cargo fmt --all --check
 cargo build --locked
 cargo test --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
+python3 scripts/check-docs.py
 ```
 
-Two benchmarks are ignored by default. Database and SSH tests return early when their environment variables are absent; a green unit-test run alone does not verify those integrations.
+Three benchmarks are ignored by default. Database and SSH tests return early when their environment variables are absent; a green unit-test run alone does not verify those integrations.
 
 ## PostgreSQL integration tests
 
-Point the tests at a disposable database owned by a role permitted to create schemas and temporary tables:
+Point the tests at a disposable database owned by a role permitted to create schemas, temporary tables and test roles:
 
 ```sh
 TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
   cargo test --locked live_tests -- --test-threads=1
 ```
 
-This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, and CSV/SQL export round trips. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
+This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, CSV/SQL export round trips and the extension manager's trusted-extension install/upgrade/recovery with a restricted role. The latter needs an absent `hstore` or `pg_trgm` extension and its server files; it cleans up only its own extension/schema/role fixtures. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
+
+Optional fixture checks:
+
+- `TRUNQ_TEST_ADMIN_URL`: a disposable database with pg_cron and pgAudit preloaded/installed. `cargo test --locked scheduler_templates_bind -- --nocapture` checks parameter binding, pause/remove and audit settings without leaving a job behind.
+- `TRUNQ_TEST_TLS_CA`, `TRUNQ_TEST_TLS_CERT`, `TRUNQ_TEST_TLS_KEY`: PEM CA/client chain and unencrypted PKCS #8 key. Point `TRUNQ_TEST_DATABASE_URL` at a TLS-enabled server reached as `localhost`, whose server certificate covers only `localhost`, and configure certificate-only authentication for role `cert_user` (certificate CN). `cargo test --locked custom_ca_and_client_certificate_authentication` verifies chain/hostname failures and client authentication. Include IPv4/IPv6 local access in the fixture.
+- Without those variables, these optional tests return early. The ordinary suite still tests helper bounds, SSL timeouts, argument substitution and restricted-role catalog queries. Real provider logins/CLI selection require separate cloud infrastructure.
 
 The [performance guide](performance.md) explains the opt-in benchmarks and their measurement limits. The [website guide](../website/README.md#check-website-changes) covers the browser checks, including the handbook's mobile navigation, search and copy controls.
 
@@ -51,7 +58,7 @@ src/
 
   Steps: `wait:<s>`, `run`, `runall`, `dryrun`, `explain[:analyze]`, `sql:<text>` (separate with `;;`), `open:<schema.table>`,
   `tab:<n>`, `palette:<query>`, `health`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
-  `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn`,
+  `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 
 ## Release and nightly builds
@@ -100,3 +107,19 @@ Run `actionlint .github/workflows/release.yml` when actionlint is available. Kee
 If a nightly is missing, inspect **Actions → Release** for a failed or queued job, check that scheduled workflows are enabled, and confirm that the workflow exists on the default branch. A green package preview does not mean a prerelease was published. Maintainers can request a fresh default-branch snapshot with a manual `nightly` dispatch.
 
 CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) separately checks formatting and Clippy, builds and tests on macOS, Windows and Linux, checks the website, and runs protocol tests against PostgreSQL 13–18.
+
+## Dependency and production checks
+
+Install the pinned scanner outside the project dependencies, then audit the locked graph:
+
+```sh
+cargo install cargo-audit --version 0.22.2 --locked
+cargo audit
+python3 scripts/check-docs.py
+```
+
+[Audit CI](../.github/workflows/security.yml) also runs weekly and retains its JSON result. Review maintenance warnings as well as vulnerability failures; [the current findings](security-review.md#dependency-audit) record the remaining upstream work. Do not add blanket advisory ignores to make a build green.
+
+The SSH fixture uses `TRUNQ_TEST_SSH=user@host:port|/absolute/path/to/ed25519_key` plus `TRUNQ_TEST_DATABASE_URL` as seen from the bastion. The live test checks two channels sharing one login, cancel delivery and releasing the final handle. Use a disposable bastion with verified raw host keys; RSA and SSH host certificates are unsupported. The protocol live suite also exercises diagnostic flooding and queue reset.
+
+To capture only the nine new extension/authentication/audit/chart views, run `python3 scripts/screenshots.py --binary target/debug/trunq --suite new` with a display and the sample database. The default suite captures 21 views. Example cloud forms do not log in or save profiles; extension captures inspect inventory without enabling/updating anything. Review every image for sensitive data before committing.

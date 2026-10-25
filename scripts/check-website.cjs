@@ -60,6 +60,20 @@ const base = process.env.TRUNQ_SITE_URL || 'http://127.0.0.1:8000';
     assert.equal(await page.evaluate(() => getSelection().toString()), await page.locator('#build-linux pre').textContent()); checks++;
 
     const trigger = page.locator('.docs__search');
+    // Request lazy screenshots explicitly: screenshots far down the handbook
+    // must not escape validation just because this run did not scroll to them.
+    const shots = await page.locator('.doc__shot img').evaluateAll(images => images.map(img => ({ src: img.src, alt: img.alt })));
+    assert.ok(shots.length >= 14, 'Handbook includes the new native screenshots');
+    for (const shot of shots) {
+      assert.ok(shot.alt.trim(), 'Screenshot has meaningful alt text');
+      const response = await page.request.get(shot.src);
+      assert.equal(response.status(), 200, shot.src);
+      assert.match(response.headers()['content-type'], /^image\//, shot.src);
+    }
+    await trigger.click();
+    await page.locator('[data-palette-input]').fill('Credential and SSH compatibility');
+    await page.locator('.palette__item').filter({ hasText: 'Credential and SSH compatibility' }).click();
+    await aligned(page, 'credential-upgrade'); checks++;
     await trigger.click();
     await page.locator('[data-palette-input]').fill('export');
     await page.locator('.palette__item').filter({ hasText: 'Export the rows you mean' }).click();

@@ -115,15 +115,25 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 
 - **Command palette** (⌘K): one search field for tables, views, functions, connections, saved snippets, recent queries and commands such as *Format SQL* or *Switch this tab to another connection*.
 - **Object tree** with databases, schemas, tables (expand to columns with types, keys and foreign keys), views, materialized views, sequences, functions and types, with row estimates and sizes.
+- **Extension manager**: search every server-provided extension by name/description, choose a version/schema, review optional dependencies and enable/update directly. Read-only/recovery guards and server error reporting are included. [Quick start](extensions.md).
+- **Database tools**: extension version/dependency inventory, reviewed create/update templates, pg_cron scheduling/pause/removal, audit/security inspections, foreign-server and replication inventories. Installed extensions, event triggers and publications appear in the tree. [Administration and limits](administration.md).
 - **Quick DDL**: view or copy the DDL of a table, view, function, sequence or index from the context menu.
 - Generate SELECT, INSERT, UPDATE, DELETE, EXPLAIN and maintenance commands from the context menu.
+
+![Extension catalog and explicit SQL preview](screenshots/extensions.png)
 
 ### Connect to anything
 
 - TLS (`disable` up to `verify-full`), SCRAM-SHA-256, MD5 and trust, Unix sockets, `~/.pgpass`, or paste a `postgres://` URL.
 - **SSH tunnels** through a bastion or jump host, with agent, key file or password authentication.
 - **Microsoft Entra ID** for Azure Database for PostgreSQL (Azure global, **Azure China (21Vianet)** and Azure US Government) through the browser, a device code or the Azure CLI, with automatic hourly token refresh.
-- Passwords, SSH secrets and refresh tokens live in the operating system keychain, never in files. No telemetry.
+- **Token commands** with Azure CLI, AWS RDS and Google Cloud presets, plus arbitrary local helpers; tokens are acquired for new connections. [Provider setup](cloud-authentication.md).
+- Per-profile PEM CA bundles and client certificates with PKCS #8 keys; TLS setup has a bounded timeout.
+- Passwords, SSH secrets and interactive refresh tokens use the operating system keychain. Service-principal secrets can come from environment variables. Keep secrets out of ordinary saved helper arguments. No telemetry.
+
+![Cloud-neutral token helper configuration](screenshots/auth-token-command.png)
+
+Example profile only; live provider prerequisites are documented in the cloud guide. Native SSH requires Ed25519/ECDSA and supports disabling first-use trust for pinned production hosts. Older stored credentials need [one-time re-entry](production.md#upgrade-and-credential-changes).
 
 ### Connection ownership and cleanup
 
@@ -131,7 +141,7 @@ Formats: CSV, JSON, Markdown, SQL INSERT and TypeScript.
 - Monitoring, foreign key peeks and the sessions view reuse the existing browser connection instead of opening new ones. Health checks, exports and imports use a short-lived connection that closes as soon as they finish.
 - The status bar shows the live connection count. Click it to see every connection (purpose, PID, age) and close any of them.
 - Each connection sets `application_name` (`Trunq: Query 3`, `Trunq: Object browser` and so on) so you can find it in `pg_stat_activity`. Background metadata connections use `lock_timeout` and `statement_timeout` to limit waits during migrations.
-- TCP keep-alive detects dead networks. All SSH tunnels of a server share one SSH session. Everything closes cleanly on exit.
+- TCP keep-alive detects dead networks. Channels using the same SSH configuration share one SSH session, released after the final channel closes. Everything closes cleanly on exit.
 
 ## Fast by design
 

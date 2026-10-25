@@ -25,7 +25,7 @@ fn series_color(i: usize) -> Color32 {
     Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Kind {
     #[default]
     Auto,
@@ -39,14 +39,153 @@ pub struct ChartState {
     pub ys: Vec<usize>,
     pub kind: Kind,
     initialised: bool,
+    data: Option<ChartData>,
+    lines: Option<LineData>,
+}
+
+struct ChartData {
+    key: u64,
+    rows: Vec<(f64, usize)>,
+    /// Finite Y values by series/source row; NaN marks NULL or invalid data.
+    values: Vec<Vec<f64>>,
+    ymin: f64,
+    ymax: f64,
+    maxes: Vec<f64>,
+}
+
+struct LineData {
+    key: (u64, usize),
+    series: Vec<Vec<(f64, f64)>>,
+}
+
+impl ChartState {
+    fn prepare(&mut self, rs: &ResultSet, cats: &[Cat], xc: usize, line: bool) {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        (rs.generation, rs.nrows(), rs.byte_size(), xc, &self.ys, line, cats).hash(&mut hash);
+        let key = hash.finish();
+        if self.data.as_ref().is_some_and(|d| d.key == key) {
+            return;
+        }
+        let xcat = cats.get(xc).copied().unwrap_or(Cat::Other);
+        let continuous = matches!(xcat, Cat::DateTime | Cat::Number);
+        let rows = if line && continuous {
+            let mut rows: Vec<_> = (0..rs.nrows()).filter_map(|r| Some((x_value(rs.get(r, xc)?, xcat)?, r))).collect();
+            rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+            rows
+        } else {
+            (0..rs.nrows().min(if line { 20_000 } else { MAX_BARS })).map(|r| (r as f64, r)).collect()
+        };
+        // Bars only need their displayed rows. Continuous lines retain all
+        // finite X rows for exact hover lookup; no strings are copied.
+        let count = rows.iter().map(|r| r.1 + 1).max().unwrap_or(0);
+        let values: Vec<Vec<f64>> = self.ys.iter().map(|&c| (0..count).map(|r| rs.get(r, c).and_then(finite_number).unwrap_or(f64::NAN)).collect()).collect();
+        let (mut ymin, mut ymax) = (0f64, f64::NEG_INFINITY);
+        for &(_, r) in &rows {
+            for series in &values {
+                let v = series[r];
+                if v.is_finite() {
+                    ymin = ymin.min(v);
+                    ymax = ymax.max(v);
+                }
+            }
+        }
+        let maxes = self.ys.iter().map(|&c| col_abs_max(rs, c)).collect();
+        self.data = Some(ChartData { key, rows, values, ymin, ymax, maxes });
+        self.lines = None;
+    }
+
+    fn prepare_lines(&mut self, width: usize) {
+        let data = self.data.as_ref().unwrap();
+        let width = width.max(1);
+        let key = (data.key, width);
+        if self.lines.as_ref().is_some_and(|lines| lines.key == key) {
+            return;
+        }
+        let xmin = data.rows.first().map_or(0.0, |r| r.0);
+        let xmax = data.rows.last().map_or(1.0, |r| r.0);
+        let series = data.values.iter().map(|values| decimate(&data.rows, values, xmin, xmax, width)).collect();
+        self.lines = Some(LineData { key, series });
+    }
+}
+
+fn finite_number(value: &str) -> Option<f64> {
+    value.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+// Preserve the source order of each bucket's extrema: always drawing the min
+// before the max invents reversals in a line that actually trends downward.
+fn decimate(rows: &[(f64, usize)], values: &[f64], xmin: f64, xmax: f64, width: usize) -> Vec<(f64, f64)> {
+    let mut out = Vec::with_capacity(width.saturating_add(1) * 2);
+    let mut bucket = usize::MAX;
+    let (mut lo, mut hi): (Option<usize>, Option<usize>) = (None, None);
+    let flush = |out: &mut Vec<_>, lo: Option<usize>, hi: Option<usize>| {
+        if let (Some(a), Some(b)) = (lo, hi) {
+            let (a, b) = (a.min(b), a.max(b));
+            out.push((rows[a].0, values[rows[a].1]));
+            if a != b {
+                out.push((rows[b].0, values[rows[b].1]));
+            }
+        }
+    };
+    for (i, &(x, r)) in rows.iter().enumerate() {
+        let v = values[r];
+        if !v.is_finite() {
+            continue;
+        }
+        let next = (normalise(x, xmin, xmax) * width as f64) as usize;
+        if next != bucket {
+            flush(&mut out, lo, hi);
+            lo = Some(i);
+            hi = Some(i);
+            bucket = next;
+        } else {
+            if v < values[rows[lo.unwrap()].1] {
+                lo = Some(i);
+            }
+            if v > values[rows[hi.unwrap()].1] {
+                hi = Some(i);
+            }
+        }
+    }
+    flush(&mut out, lo, hi);
+    // Extrema alone can omit the actual endpoints within their buckets.
+    if let Some(&(x, r)) = rows.iter().find(|&&(_, r)| values[r].is_finite()) {
+        let first = (x, values[r]);
+        if out.first() != Some(&first) {
+            out.insert(0, first);
+        }
+    }
+    if let Some(&(x, r)) = rows.iter().rev().find(|&&(_, r)| values[r].is_finite()) {
+        let last = (x, values[r]);
+        if out.last() != Some(&last) {
+            out.push(last);
+        }
+    }
+    out
+}
+
+fn normalise(value: f64, min: f64, max: f64) -> f64 {
+    let scale = min.abs().max(max.abs()).max(f64::MIN_POSITIVE);
+    let span = max / scale - min / scale;
+    if span <= 0.0 { 0.0 } else { (value / scale - min / scale) / span }
 }
 
 /// Parses timestamps / dates / numbers into an f64 x-position.
 fn x_value(v: &str, cat: Cat) -> Option<f64> {
     match cat {
-        Cat::Number => v.parse().ok(),
+        Cat::Number => finite_number(v),
         Cat::DateTime => {
             let s = v.trim();
+            if let Ok(d) = chrono::DateTime::parse_from_rfc3339(s) {
+                return Some(d.timestamp_millis() as f64);
+            }
+            if let Ok(d) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%:z") {
+                return Some(d.timestamp_millis() as f64);
+            }
+            if let Ok(d) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z") {
+                return Some(d.timestamp_millis() as f64);
+            }
             if let Ok(d) = chrono::DateTime::parse_from_str(&format!("{s}00"), "%Y-%m-%d %H:%M:%S%.f%z") {
                 return Some(d.timestamp_millis() as f64);
             }
@@ -72,7 +211,7 @@ fn is_id_column(name: &str) -> bool {
 }
 
 fn col_abs_max(rs: &ResultSet, c: usize) -> f64 {
-    (0..rs.nrows().min(5000)).filter_map(|r| rs.get(r, c)?.parse::<f64>().ok()).fold(0.0, |m, v| m.max(v.abs()))
+    (0..rs.nrows().min(5000)).filter_map(|r| finite_number(rs.get(r, c)?)).fold(0.0, |m, v| m.max(v.abs()))
 }
 
 /// Two measures are plottable on one axis if within 20× of each other.
@@ -86,8 +225,15 @@ fn nice_ticks(min: f64, max: f64, count: usize) -> Vec<f64> {
     if !min.is_finite() || !max.is_finite() || max <= min {
         return vec![min];
     }
+    if !(max - min).is_finite() {
+        let scale = min.abs().max(max.abs());
+        return nice_ticks(min / scale, max / scale, count).into_iter().map(|v| v * scale).filter(|v| v.is_finite()).collect();
+    }
     let raw = (max - min) / count.max(1) as f64;
     let mag = 10f64.powf(raw.log10().floor());
+    if mag == 0.0 || !mag.is_finite() {
+        return vec![min, max];
+    }
     let step = [1.0, 2.0, 2.5, 5.0, 10.0].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10.0 * mag);
     let start = (min / step).floor() * step;
     let mut out = Vec::new();
@@ -193,27 +339,10 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
 
     // ---- data ----
     let n = rs.nrows();
-    let mut rows: Vec<(f64, usize)> = Vec::with_capacity(n);
-    if line && continuous {
-        for r in 0..n {
-            if let Some(x) = rs.get(r, xc).and_then(|v| x_value(v, xcat)) {
-                rows.push((x, r));
-            }
-        }
-        rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-    } else {
-        rows = (0..n.min(if line { 20_000 } else { MAX_BARS })).map(|r| (r as f64, r)).collect();
-    }
-    let yv = |r: usize, c: usize| rs.get(r, c).and_then(|v| v.parse::<f64>().ok());
-    let (mut ymin, mut ymax) = (0f64, f64::NEG_INFINITY);
-    for &(_, r) in &rows {
-        for &c in &st.ys {
-            if let Some(v) = yv(r, c) {
-                ymin = ymin.min(v);
-                ymax = ymax.max(v);
-            }
-        }
-    }
+    st.prepare(rs, cats, xc, line);
+    let data = st.data.as_ref().unwrap();
+    let rows = &data.rows;
+    let (ymin, mut ymax) = (data.ymin, data.ymax);
     if !ymax.is_finite() || rows.is_empty() {
         ui.add_space(30.0);
         ui.vertical_centered(|ui| ui.label(RichText::new("No numeric data to plot").color(pal.faint)));
@@ -227,8 +356,7 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
     let yhi = ticks.last().copied().unwrap_or(ymax).max(ymax);
 
     // One axis only: warn when selected measures differ wildly in scale.
-    let maxes: Vec<f64> = st.ys.iter().map(|&c| col_abs_max(rs, c)).collect();
-    let (mn, mx) = maxes.iter().fold((f64::INFINITY, 0f64), |(a, b), &v| (a.min(v), b.max(v)));
+    let (mn, mx) = data.maxes.iter().fold((f64::INFINITY, 0f64), |(a, b), &v| (a.min(v), b.max(v)));
     if st.ys.len() > 1 && !same_scale(mn, mx) {
         ui.horizontal(|ui| {
             ui.add_space(12.0);
@@ -271,7 +399,7 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
     if plot.width() < 40.0 || plot.height() < 40.0 {
         return;
     }
-    let ymap = |v: f64| plot.bottom() - ((v - ylo) / (yhi - ylo)) as f32 * plot.height();
+    let ymap = |v: f64| plot.bottom() - normalise(v, ylo, yhi) as f32 * plot.height();
 
     // recessive grid + y labels
     for t in &ticks {
@@ -285,9 +413,16 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
     let mut tooltip: Option<Tooltip> = None;
 
     if line {
+        st.prepare_lines(plot.width().max(1.0) as usize);
+    }
+    let data = st.data.as_ref().unwrap();
+    let rows = &data.rows;
+    let yv = |r: usize, c: usize| st.ys.iter().position(|&y| y == c).map(|i| data.values[i][r]).filter(|v| v.is_finite());
+
+    if line {
         let (xmin, xmax) = (rows.first().map(|r| r.0).unwrap_or(0.0), rows.last().map(|r| r.0).unwrap_or(1.0));
         let xspan = (xmax - xmin).max(1e-9);
-        let xmap = |x: f64| plot.left() + ((x - xmin) / xspan) as f32 * plot.width();
+        let xmap = |x: f64| plot.left() + normalise(x, xmin, xmax) as f32 * plot.width();
         // x axis labels
         if continuous {
             for t in nice_ticks(xmin, xmax, (plot.width() / 110.0) as usize) {
@@ -299,52 +434,20 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
             }
         }
         // series (decimated to ~2 points per pixel column)
-        let px = plot.width().max(1.0) as usize;
         let mut end_labels: Vec<(f32, String)> = Vec::new();
         for (i, &c) in st.ys.iter().enumerate() {
             let color = series_color(i);
-            let mut pts: Vec<Pos2> = Vec::with_capacity(px * 2);
-            let mut last_bucket = usize::MAX;
-            let (mut bmin, mut bmax): (Option<Pos2>, Option<Pos2>) = (None, None);
-            for &(x, r) in &rows {
-                let Some(v) = yv(r, c) else { continue };
-                let pt = pos2(xmap(x), ymap(v));
-                let bucket = ((pt.x - plot.left()) as usize).min(px);
-                if bucket != last_bucket {
-                    if let Some(a) = bmin {
-                        pts.push(a);
-                    }
-                    if let Some(b) = bmax
-                        && Some(b) != bmin
-                    {
-                        pts.push(b);
-                    }
-                    bmin = Some(pt);
-                    bmax = Some(pt);
-                    last_bucket = bucket;
-                } else {
-                    if pt.y > bmin.map_or(f32::MIN, |p| p.y) {
-                        bmin = Some(pt);
-                    }
-                    if pt.y < bmax.map_or(f32::MAX, |p| p.y) {
-                        bmax = Some(pt);
-                    }
-                }
-            }
-            pts.extend(bmin);
-            if bmax != bmin {
-                pts.extend(bmax);
-            }
+            let pts: Vec<Pos2> = st.lines.as_ref().unwrap().series[i].iter().map(|&(x, y)| pos2(xmap(x), ymap(y))).collect();
             if pts.len() == 1 {
                 p.circle_filled(pts[0], 4.0, color);
             }
-            p.add(egui::Shape::line(pts.clone(), Stroke::new(2.0, color)));
             // direct label at the line end (2-4 series)
             if (2..=4).contains(&st.ys.len())
                 && let Some(end) = pts.last()
             {
                 end_labels.push((end.y, rs.columns[c].name.clone()));
             }
+            p.add(egui::Shape::line(pts, Stroke::new(2.0, color)));
         }
         // direct labels, nudged apart so they never overlap
         end_labels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -356,7 +459,8 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
         }
         // crosshair + tooltip on nearest x
         if let Some(h) = hover {
-            let target = xmin + ((h.x - plot.left()) / plot.width()) as f64 * xspan;
+            let ratio = ((h.x - plot.left()) / plot.width()).clamp(0.0, 1.0) as f64;
+            let target = xmin * (1.0 - ratio) + xmax * ratio;
             let idx = rows.partition_point(|r| r.0 < target).min(rows.len() - 1);
             let idx = if idx > 0 && (rows[idx - 1].0 - target).abs() < (rows[idx].0 - target).abs() { idx - 1 } else { idx };
             let (x, r) = rows[idx];
@@ -435,6 +539,106 @@ pub fn ui(ui: &mut Ui, st: &mut ChartState, rs: &ResultSet, cats: &[Cat]) {
                 }
             });
         });
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::db::result::Column;
+
+    fn result(rows: &[[&str; 2]]) -> ResultSet {
+        let mut rs = ResultSet::new(vec![Column::text("x"), Column::text("y")]);
+        for row in rows {
+            rs.push_text_row(&[Some(row[0]), Some(row[1])]);
+        }
+        rs
+    }
+
+    #[test]
+    fn chart_cache_refreshes_for_append_replacement_axes_and_kind() {
+        let cats = [Cat::Number, Cat::Number];
+        let mut rs = result(&[["2", "4"], ["1", "3"]]);
+        let mut state = ChartState { ys: vec![1], ..Default::default() };
+        state.prepare(&rs, &cats, 0, true);
+        state.prepare_lines(100);
+        assert_eq!(state.data.as_ref().unwrap().rows, [(1.0, 1), (2.0, 0)]);
+        let key = state.data.as_ref().unwrap().key;
+        let ptr = state.data.as_ref().unwrap().rows.as_ptr();
+        state.prepare(&rs, &cats, 0, true);
+        assert_eq!(state.data.as_ref().unwrap().rows.as_ptr(), ptr);
+        assert!(state.lines.is_some());
+        rs.append(result(&[["0", "9"]]));
+        state.prepare(&rs, &cats, 0, true);
+        assert_ne!(state.data.as_ref().unwrap().key, key);
+        assert!(state.lines.is_none());
+        assert_eq!(state.data.as_ref().unwrap().ymax, 9.0);
+        // Same shape and bytes, different content and result identity.
+        let rs = result(&[["2", "6"], ["1", "5"], ["0", "7"]]);
+        state.prepare(&rs, &cats, 0, true);
+        assert_eq!(state.data.as_ref().unwrap().ymax, 7.0);
+        state.prepare(&rs, &cats, 0, false);
+        assert_eq!(state.data.as_ref().unwrap().rows[0].1, 0);
+        state.ys = vec![0];
+        state.prepare(&rs, &cats, 1, true);
+        assert_eq!(state.data.as_ref().unwrap().ymax, 2.0);
+    }
+
+    #[test]
+    fn timestamp_offsets_and_nonfinite_values() {
+        let reference = x_value("2026-10-25 12:30:00+00", Cat::DateTime).unwrap();
+        for value in ["2026-10-25 14:00:00+01:30", "2026-10-25 07:30:00-05", "2026-10-25T12:30:00Z", "2026-10-25 14:00:00+0130"] {
+            assert_eq!(x_value(value, Cat::DateTime), Some(reference), "{value}");
+        }
+        let rs = result(&[["NaN", "2"], ["Infinity", "3"], ["1", "Infinity"], ["2", "4"]]);
+        let mut state = ChartState { ys: vec![1], ..Default::default() };
+        state.prepare(&rs, &[Cat::Number, Cat::Number], 0, true);
+        let data = state.data.unwrap();
+        assert_eq!(data.rows.len(), 2);
+        assert_eq!(data.ymax, 4.0);
+        assert!(data.values[0][2].is_nan());
+        assert_eq!(normalise(0.0, -1e308, 1e308), 0.5);
+        assert!(nice_ticks(-1e308, 1e308, 5).iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn decimation_preserves_extrema_order_and_bounds_geometry() {
+        let rows = vec![(0.0, 0), (1.0, 1), (2.0, 2), (3.0, 3)];
+        assert_eq!(decimate(&rows, &[3.0, 1.0, 2.0, 0.0], 0.0, 3.0, 1), [(0.0, 3.0), (1.0, 1.0), (3.0, 0.0)]);
+        let rows: Vec<_> = (0..100_000).map(|i| (i as f64, i)).collect();
+        let values: Vec<_> = (0..100_000).map(|i| (i as f64).sin()).collect();
+        let points = decimate(&rows, &values, 0.0, 99_999.0, 500);
+        assert!(points.len() <= 1004);
+        assert!(points.windows(2).all(|p| p[0].0 <= p[1].0));
+        assert_eq!(points.first(), Some(&(0.0, 0.0)));
+        assert_eq!(points.last(), Some(&(99_999.0, 99_999f64.sin())));
+    }
+
+    /// Preparation/cache benchmark, excludes fixture construction and painting.
+    #[test]
+    #[ignore]
+    fn bench_chart_million() {
+        let mut rs = ResultSet::new(vec![Column::text("x"), Column::text("y")]);
+        for i in 0..1_000_000 {
+            rs.push_text_row(&[Some(&(1_000_000 - i).to_string()), Some(&(i % 997).to_string())]);
+        }
+        let mut state = ChartState { ys: vec![1], ..Default::default() };
+        let start = std::time::Instant::now();
+        state.prepare(&rs, &[Cat::Number, Cat::Number], 0, true);
+        state.prepare_lines(1000);
+        let cold = start.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            state.prepare(&rs, &[Cat::Number, Cat::Number], 0, true);
+            state.prepare_lines(1000);
+            std::hint::black_box(&state);
+        }
+        println!(
+            "TRUNQ_BENCH chart rows=1000000 cold_ms={:.3} cached_1000_ms={:.3} points={}",
+            cold.as_secs_f64() * 1000.0,
+            start.elapsed().as_secs_f64() * 1000.0,
+            state.lines.as_ref().unwrap().series[0].len()
+        );
     }
 }
 

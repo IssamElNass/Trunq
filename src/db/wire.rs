@@ -26,6 +26,26 @@ use tokio::net::TcpStream;
 
 use super::result::{Column, ResultSet};
 
+const MAX_SERVER_MESSAGE: usize = 256 * 1024 * 1024;
+const MAX_DIAGNOSTIC_MESSAGE: usize = 1024 * 1024;
+const MAX_PENDING_MESSAGES: usize = 1024;
+const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
+
+fn check_message_length(buffer: &[u8]) -> Result<()> {
+    if buffer.len() < 5 {
+        return Ok(());
+    }
+    let length = i32::from_be_bytes(buffer[1..5].try_into().unwrap());
+    if length < 4 {
+        bail!("invalid PostgreSQL server message length");
+    }
+    let limit = if matches!(buffer[0], b'N' | b'E' | b'A' | b'S') { MAX_DIAGNOSTIC_MESSAGE } else { MAX_SERVER_MESSAGE };
+    if length as usize + 1 > limit {
+        bail!("PostgreSQL server message exceeds the {} MiB client limit; use smaller fields or server-side chunking", limit / (1024 * 1024));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SslMode {
     Disable,
@@ -60,12 +80,59 @@ pub struct ConnectParams {
     pub password: Option<String>,
     pub database: String,
     pub ssl_mode: SslMode,
+    pub tls: TlsConfig,
     pub application_name: String,
     pub connect_timeout: Duration,
     /// Extra startup parameters (e.g. `options`, `search_path`).
     pub options: Option<String>,
     /// Optional SSH tunnel and its secret (password or key passphrase).
     pub ssh: Option<(super::ssh::SshConfig, Option<String>)>,
+}
+
+/// Paths only: no private key material is persisted in connection profiles.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct TlsConfig {
+    pub root_ca: String,
+    pub client_cert: String,
+    pub client_key: String,
+}
+
+impl TlsConfig {
+    pub fn configured(&self) -> bool {
+        !self.root_ca.trim().is_empty() || !self.client_cert.trim().is_empty() || !self.client_key.trim().is_empty()
+    }
+
+    fn validate(&self, mode: SslMode, host: &str) -> Result<()> {
+        if self.client_cert.trim().is_empty() != self.client_key.trim().is_empty() {
+            bail!("TLS client authentication requires both a PEM certificate and a PKCS #8 private key");
+        }
+        if self.configured() && (mode < SslMode::Require || host.starts_with('/')) {
+            bail!("custom TLS certificates require sslmode=require, verify-ca or verify-full over TCP");
+        }
+        Ok(())
+    }
+
+    async fn configure(&self, builder: &mut native_tls::TlsConnectorBuilder) -> Result<()> {
+        if !self.root_ca.trim().is_empty() {
+            let pem = tokio::fs::read(self.root_ca.trim()).await.context("could not read TLS root CA file")?;
+            let certs = native_tls::Certificate::stack_from_pem(&pem).context("invalid PEM root CA bundle")?;
+            if certs.is_empty() {
+                bail!("TLS root CA bundle contains no certificates");
+            }
+            for cert in certs {
+                builder.add_root_certificate(cert);
+            }
+        }
+        if !self.client_cert.trim().is_empty() {
+            let cert = tokio::fs::read(self.client_cert.trim()).await.context("could not read TLS client certificate")?;
+            let key = tokio::fs::read(self.client_key.trim()).await.context("could not read TLS client private key")?;
+            builder.identity(
+                native_tls::Identity::from_pkcs8(&cert, &key).context("invalid TLS client identity; use PEM certificates and an unencrypted PKCS #8 key")?,
+            );
+        }
+        Ok(())
+    }
 }
 
 /// A database error as reported by the server, with all the fields that are
@@ -155,15 +222,19 @@ pub struct CancelToken {
 
 impl CancelToken {
     pub async fn cancel(&self) -> Result<()> {
-        let mut stream = open_stream(&self.params, self.used_tls).await?.0;
-        let mut buf = BytesMut::new();
-        frontend::cancel_request(self.pid, self.secret, &mut buf);
-        stream.write_all(&buf).await?;
-        stream.flush().await?;
-        // The server closes the connection once it processed the request.
-        let mut sink = [0u8; 16];
-        let _ = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut sink)).await;
-        Ok(())
+        tokio::time::timeout(self.params.connect_timeout + Duration::from_secs(2), async {
+            let mut stream = open_stream(&self.params, self.used_tls).await?.0;
+            let mut buf = BytesMut::new();
+            frontend::cancel_request(self.pid, self.secret, &mut buf);
+            stream.write_all(&buf).await?;
+            stream.flush().await?;
+            // The server closes the connection once it processed the request.
+            let mut sink = [0u8; 16];
+            let _ = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut sink)).await;
+            Ok(())
+        })
+        .await
+        .map_err(|_| anyhow!("timeout sending query cancellation"))?
     }
 }
 
@@ -235,6 +306,7 @@ async fn open_stream(p: &ConnectParams, want_tls: bool) -> Result<(Stream, bool)
         bail!("server does not support SSL, but sslmode={} requires it", p.ssl_mode.label());
     }
     let mut builder = native_tls::TlsConnector::builder();
+    p.tls.configure(&mut builder).await?;
     match p.ssl_mode {
         SslMode::Prefer | SslMode::Require => {
             builder.danger_accept_invalid_certs(true).danger_accept_invalid_hostnames(true);
@@ -245,7 +317,10 @@ async fn open_stream(p: &ConnectParams, want_tls: bool) -> Result<(Stream, bool)
         _ => {}
     }
     let connector = tokio_native_tls::TlsConnector::from(builder.build()?);
-    let tls = connector.connect(host, base).await.context("TLS handshake failed")?;
+    let tls = tokio::time::timeout(p.connect_timeout, connector.connect(host, base))
+        .await
+        .map_err(|_| anyhow!("timeout during TLS handshake"))?
+        .context("TLS handshake failed")?;
     Ok((Stream(Box::new(tls)), true))
 }
 
@@ -275,6 +350,10 @@ pub struct PgConn {
     pub tx_status: TxStatus,
     pub notices: Vec<Notice>,
     pub notifications: Vec<Notification>,
+    notice_bytes: usize,
+    notices_truncated: bool,
+    notification_bytes: usize,
+    notifications_truncated: bool,
     cancel: CancelToken,
     /// An unnamed portal is open and waiting for more `Execute`s.
     portal_open: bool,
@@ -282,7 +361,9 @@ pub struct PgConn {
 
 impl PgConn {
     pub async fn connect(p: &ConnectParams) -> Result<PgConn> {
-        let (stream, used_tls) = open_stream(p, true).await?;
+        p.tls.validate(p.ssl_mode, &p.host)?;
+        let (stream, used_tls) =
+            tokio::time::timeout(p.connect_timeout, open_stream(p, true)).await.map_err(|_| anyhow!("timeout opening database connection"))??;
         let mut conn = PgConn {
             stream,
             rbuf: BytesMut::with_capacity(64 * 1024),
@@ -291,6 +372,10 @@ impl PgConn {
             tx_status: TxStatus::Idle,
             notices: Vec::new(),
             notifications: Vec::new(),
+            notice_bytes: 0,
+            notices_truncated: false,
+            notification_bytes: 0,
+            notifications_truncated: false,
             cancel: CancelToken { params: p.clone(), used_tls, pid: 0, secret: 0 },
             portal_open: false,
         };
@@ -406,7 +491,46 @@ impl PgConn {
     }
 
     fn push_notice(&mut self, e: DbError) {
+        if self.notices.is_empty() {
+            self.notice_bytes = 0;
+            self.notices_truncated = false;
+        }
+        let size = e.severity.len() + e.message.len() + e.detail.as_ref().map_or(0, String::len) + e.hint.as_ref().map_or(0, String::len);
+        if self.notices.len() >= MAX_PENDING_MESSAGES || self.notice_bytes.saturating_add(size) > MAX_PENDING_BYTES {
+            if !self.notices_truncated {
+                self.notices.push(Notice {
+                    severity: "WARNING".into(),
+                    message: "Client notice output truncated; inspect the server logs for complete diagnostics".into(),
+                    detail: None,
+                    hint: None,
+                });
+                self.notices_truncated = true;
+            }
+            return;
+        }
+        self.notice_bytes += size;
         self.notices.push(Notice { severity: e.severity, message: e.message, detail: e.detail, hint: e.hint });
+    }
+
+    fn push_notification(&mut self, notification: Notification) {
+        if self.notifications.is_empty() {
+            self.notification_bytes = 0;
+            self.notifications_truncated = false;
+        }
+        let size = notification.channel.len() + notification.payload.len();
+        if self.notifications.len() >= MAX_PENDING_MESSAGES || self.notification_bytes.saturating_add(size) > MAX_PENDING_BYTES {
+            if !self.notifications_truncated {
+                self.push_notice(DbError {
+                    severity: "WARNING".into(),
+                    message: "Client notification output truncated; this client queue is not a durable event log".into(),
+                    ..Default::default()
+                });
+                self.notifications_truncated = true;
+            }
+            return;
+        }
+        self.notification_bytes += size;
+        self.notifications.push(notification);
     }
 
     async fn flush(&mut self) -> Result<()> {
@@ -418,6 +542,7 @@ impl PgConn {
 
     async fn read_raw(&mut self) -> Result<Message> {
         loop {
+            check_message_length(&self.rbuf)?;
             if let Some(m) = Message::parse(&mut self.rbuf)? {
                 return Ok(m);
             }
@@ -440,7 +565,7 @@ impl PgConn {
                     self.params.insert(ps.name()?.to_string(), ps.value()?.to_string());
                 }
                 Message::NotificationResponse(n) => {
-                    self.notifications.push(Notification { pid: n.process_id(), channel: n.channel()?.to_string(), payload: n.message()?.to_string() })
+                    self.push_notification(Notification { pid: n.process_id(), channel: n.channel()?.to_string(), payload: n.message()?.to_string() })
                 }
                 m => return Ok(m),
             }
@@ -772,6 +897,42 @@ mod live_tests {
     }
 
     #[test]
+    fn oversized_headers_are_rejected_before_the_body_is_received() {
+        for (tag, length) in [(b'D', i32::MAX), (b'N', 2 * 1024 * 1024), (b'E', 3), (b'A', -1)] {
+            let mut header = vec![tag];
+            header.extend_from_slice(&length.to_be_bytes());
+            assert!(check_message_length(&header).is_err());
+        }
+        assert!(check_message_length(&[b'D', 0, 0, 0, 4]).is_ok());
+        assert!(check_message_length(&[b'D', 0]).is_ok());
+    }
+
+    #[test]
+    fn diagnostic_flood_is_bounded_and_draining_resets_the_budget() {
+        let Some(p) = params() else { return };
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.unwrap();
+            c.simple_query("DO $$ BEGIN FOR i IN 1..1500 LOOP RAISE NOTICE '%', repeat('x',4096); END LOOP; END $$").await.unwrap();
+            assert!(c.notices.len() <= MAX_PENDING_MESSAGES + 1);
+            assert!(c.notice_bytes <= MAX_PENDING_BYTES);
+            assert!(c.notices.last().unwrap().message.contains("truncated"));
+            c.notices.clear();
+            c.simple_query("DO $$ BEGIN RAISE NOTICE 'after drain'; END $$").await.unwrap();
+            assert_eq!(c.notices.len(), 1);
+            assert_eq!(c.notices[0].message, "after drain");
+            for i in 0..2000 {
+                c.push_notification(Notification { pid: 0, channel: "events".into(), payload: i.to_string() });
+            }
+            assert_eq!(c.notifications.len(), MAX_PENDING_MESSAGES);
+            assert!(c.notices.last().unwrap().message.contains("notification output truncated"));
+            c.notifications.clear();
+            c.push_notification(Notification { pid: 0, channel: "events".into(), payload: "new".into() });
+            assert_eq!(c.notifications.len(), 1);
+            c.terminate().await;
+        });
+    }
+
+    #[test]
     fn simple_and_extended_queries() {
         let Some(p) = params() else { return };
         rt().block_on(async {
@@ -904,6 +1065,124 @@ mod live_tests {
             let roles = c.simple_query(crate::db::meta::SERVER_OBJECTS_SQL).await.unwrap();
             assert!(crate::db::meta::parse_roles(&roles[0]).iter().any(|r| r.is_current));
             c.simple_query("ROLLBACK").await.unwrap();
+        });
+    }
+
+    #[test]
+    fn administration_queries_work_with_restricted_role() {
+        let Some(p) = params() else { return };
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.unwrap();
+            c.simple_query("BEGIN; CREATE ROLE trunq_admin_inspection; SET LOCAL ROLE trunq_admin_inspection").await.unwrap();
+            for sql in [
+                super::super::admin::EXTENSIONS,
+                super::super::admin::EXTENSION_PREFLIGHT,
+                super::super::admin::AUDIT,
+                super::super::admin::SECURITY,
+                super::super::admin::FOREIGN_DATA,
+                super::super::admin::REPLICATION,
+            ] {
+                c.simple_query(sql).await.expect("restricted administration inspection");
+            }
+            c.simple_query("ROLLBACK").await.unwrap();
+        });
+    }
+
+    /// Optional disposable server with pg_cron/pgAudit preloaded and installed.
+    #[test]
+    fn scheduler_templates_bind_and_preserve_job_ownership() {
+        let Ok(url) = std::env::var("TRUNQ_TEST_ADMIN_URL") else { return };
+        let (profile, pw) = crate::config::Profile::from_url(&url).unwrap();
+        let params = profile.connect_params("", pw.as_deref()).unwrap();
+        rt().block_on(async {
+            let mut c = PgConn::connect(&params).await.unwrap();
+            let recipe = |part: &str| super::super::admin::RECIPES.iter().find(|r| r.label.ends_with(part)).unwrap().sql;
+            c.simple_query("BEGIN; CREATE ROLE trunq_scheduler_test; GRANT USAGE ON SCHEMA cron TO trunq_scheduler_test; GRANT EXECUTE ON FUNCTION cron.alter_job(bigint,text,text,text,text,boolean) TO trunq_scheduler_test; SET LOCAL ROLE trunq_scheduler_test")
+                .await
+                .unwrap();
+            let (sql, names) = crate::sql::lexer::bind_params(recipe("schedule a job"));
+            assert_eq!(names, ["job_name", "schedule", "command"]);
+            let job =
+                c.query_params(&sql, &[Some("trunq-bound-test".into()), Some("0 * * * *".into()), Some("SELECT current_timestamp".into())]).await.unwrap();
+            let id = job.s(0, 0).to_owned();
+            assert_eq!(
+                c.query_params("SELECT username FROM cron.job WHERE jobid=$1::bigint", &[Some(id.clone())]).await.unwrap().s(0, 0),
+                "trunq_scheduler_test"
+            );
+            let (pause, names) = crate::sql::lexer::bind_params(recipe("pause a job"));
+            assert_eq!(names, ["job_id"]);
+            c.query_params(&pause, &[Some(id.clone())]).await.unwrap();
+            assert_eq!(c.query_params("SELECT active FROM cron.job WHERE jobid=$1::bigint", &[Some(id.clone())]).await.unwrap().s(0, 0), "f");
+            c.simple_query(super::super::admin::CRON_JOBS).await.unwrap();
+            let (remove, _) = crate::sql::lexer::bind_params(recipe("remove a job"));
+            assert_eq!(c.query_params(&remove, &[Some(id)]).await.unwrap().s(0, 0), "t");
+            c.simple_query("ROLLBACK").await.unwrap();
+            // Verify that no test schedule is left behind and basic pgAudit
+            // configuration accepts the documented session-test class list.
+            assert_eq!(c.query_params("SELECT count(*) FROM cron.job WHERE jobname='trunq-bound-test'", &[]).await.unwrap().s(0, 0), "0");
+            c.simple_query(
+                "SET pgaudit.log = 'write,ddl,role'; CREATE TEMP TABLE trunq_audit_smoke (v int); INSERT INTO trunq_audit_smoke VALUES (1); RESET pgaudit.log",
+            )
+            .await
+            .unwrap();
+            c.terminate().await;
+        });
+    }
+
+    /// Optional TLS/mTLS fixture; tests normal chain validation, hostname
+    /// validation, client certificate auth and a bounded SSL negotiation.
+    #[test]
+    fn custom_ca_and_client_certificate_authentication() {
+        let Ok(root_ca) = std::env::var("TRUNQ_TEST_TLS_CA") else { return };
+        let Some(mut p) = params() else { return };
+        p.ssl_mode = SslMode::VerifyFull;
+        p.tls.root_ca = root_ca;
+        rt().block_on(async {
+            let c = PgConn::connect(&p).await.expect("custom root verifies localhost");
+            c.terminate().await;
+            let mut bad = p.clone();
+            bad.host = "127.0.0.1".into();
+            assert!(PgConn::connect(&bad).await.is_err(), "certificate only covers localhost");
+            bad = p.clone();
+            bad.tls.root_ca.clear();
+            assert!(PgConn::connect(&bad).await.is_err(), "untrusted CA must fail");
+            p.user = "cert_user".into();
+            p.password = None;
+            assert!(PgConn::connect(&p).await.is_err(), "server requires a client certificate");
+            p.tls.client_cert = std::env::var("TRUNQ_TEST_TLS_CERT").unwrap();
+            p.tls.client_key = std::env::var("TRUNQ_TEST_TLS_KEY").unwrap();
+            let mut c = PgConn::connect(&p).await.expect("mTLS authenticates cert_user");
+            assert_eq!(c.query_params("SELECT current_user", &[]).await.unwrap().s(0, 0), "cert_user");
+            c.terminate().await;
+        });
+    }
+
+    #[test]
+    fn tls_validation_and_negotiation_timeout() {
+        let tls = TlsConfig { client_cert: "cert.pem".into(), ..Default::default() };
+        assert!(tls.validate(SslMode::VerifyFull, "localhost").is_err());
+        let tls = TlsConfig { root_ca: "ca.pem".into(), ..Default::default() };
+        assert!(tls.validate(SslMode::Disable, "localhost").is_err());
+        assert!(tls.validate(SslMode::Require, "/tmp").is_err());
+        rt().block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0u8; 8];
+                stream.read_exact(&mut request).await.unwrap();
+                // Stall after SSL support, before handshake completion.
+                stream.write_all(b"S").await.unwrap();
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            });
+            let (profile, _) = crate::config::Profile::from_url(&format!("postgres://u@127.0.0.1:{}/db?sslmode=require", address.port())).unwrap();
+            let mut params = profile.connect_params("", Some("")).unwrap();
+            params.connect_timeout = Duration::from_millis(100);
+            let start = std::time::Instant::now();
+            let error = PgConn::connect(&params).await.err().expect("TLS peer must time out");
+            assert!(format!("{error:#}").contains("timeout"));
+            assert!(start.elapsed() < Duration::from_secs(2));
+            server.abort();
         });
     }
 

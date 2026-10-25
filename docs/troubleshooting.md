@@ -102,3 +102,18 @@ A missing or malformed configuration loads defaults. Close the app and preserve 
 Include the Trunq version/commit, OS, PostgreSQL version, exact error text and the smallest query or sequence of UI steps that reproduces it. State whether it uses SSH, Azure, a special TLS mode or Docker. For result/export issues, include the row scope and whether edits were pending or rows were still unfetched.
 
 Use sample data and redact passwords, tokens, connection URLs with credentials and sensitive SQL/results. Do not attach an entire configuration or history file without reviewing it. Use [the issue forms](https://github.com/IssamElNass/Trunq/issues/new/choose) for ordinary bugs and [the security policy](../SECURITY.md) for vulnerabilities.
+
+## After the security hardening update
+
+| Symptom | Explanation and next action |
+|---|---|
+| Saved password/passphrase no longer works after upgrading | Older ID-only secrets are not reused. Re-enter the database/SSH secret for the verified target; see [migration details](production.md#upgrade-and-credential-changes). |
+| Password disappears after editing host/user/database/bastion | Target changes deliberately clear previously typed credentials. Review the target, then enter its intended credential. |
+| pgpass is ignored on Unix | Verify it is a regular readable file with no group/other permission bits, for example `chmod 600 ~/.pgpass`. |
+| SSH host is not pinned | Add an independently verified raw host key or use the intended trust policy. Do not enable first-use trust merely to bypass a changed/revoked-key error. |
+| RSA SSH key fails | The vulnerable optional RSA backend was removed. Arrange Ed25519/ECDSA user and host keys; host certificates are also unsupported. |
+| Protocol message exceeds client limit | Reconnect the affected session and reduce very large fields or use server-side chunking. The individual-frame limit does not limit total result size. |
+| Notice/notification output truncated | Inspect server logs or the authoritative event system; bounded client queues are not durable delivery. |
+| Workspace write rejected | Check parent-directory ownership/ACLs and regular-file destinations; Unix append paths reject symlinks. Preserve your original files before repairing a workspace. |
+
+[Security findings and remaining limits](security-review.md) distinguish tested fixes from deployment-specific checks.

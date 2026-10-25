@@ -11,12 +11,15 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::pin::Pin;
+use std::sync::{Arc, LazyLock, Weak};
+use std::task::{Context as TaskContext, Poll};
 
 use anyhow::{Context, Result, anyhow, bail};
 use russh::client;
 use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::Mutex;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -49,6 +52,8 @@ pub struct SshConfig {
     pub user: String,
     pub auth: SshAuth,
     pub key_path: String,
+    /// False requires an already-pinned raw host key (recommended in production).
+    pub trust_new_hosts: bool,
 }
 
 impl Default for SshConfig {
@@ -60,19 +65,46 @@ impl Default for SshConfig {
             user: std::env::var("USER").unwrap_or_default(),
             auth: SshAuth::Agent,
             key_path: String::new(),
+            trust_new_hosts: true,
         }
     }
 }
 
 impl SshConfig {
     fn key(&self) -> String {
-        format!("{}@{}:{}|{:?}|{}", self.user, self.host, self.port, self.auth, self.key_path)
+        serde_json::to_string(self).expect("serializing SSH configuration")
     }
 }
 
 struct Handler {
     host: String,
     port: u16,
+    trust_new_hosts: bool,
+}
+
+fn recorded_keys(path: &std::path::Path, host: &str, port: u16, presented: &russh::keys::PublicKey) -> Result<bool> {
+    // russh treats every open error as an absent file. Check explicitly so an
+    // unreadable pinned-hosts file cannot silently downgrade to first use.
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).context("could not read SSH known_hosts; refusing to trust a new key"),
+    };
+    for line in text.lines().filter(|line| line.split_whitespace().next() == Some("@revoked")) {
+        let encoded = line.split_whitespace().nth(3).ok_or_else(|| anyhow!("invalid revoked SSH host-key record"))?;
+        let revoked = keys::parse_public_key_base64(encoded).context("invalid revoked SSH host key")?;
+        if &revoked == presented {
+            bail!("SSH host key is revoked in a checked known_hosts file");
+        }
+    }
+    let recorded = keys::known_hosts::known_host_keys_path(host, port, path).context("could not parse SSH known_hosts")?;
+    if recorded.iter().any(|(_, key)| key == presented) {
+        return Ok(true);
+    }
+    if !recorded.is_empty() {
+        bail!("SSH host key for {host}:{port} has CHANGED; verify the new fingerprint with your administrator");
+    }
+    Ok(false)
 }
 
 fn trunq_known_hosts() -> PathBuf {
@@ -85,35 +117,62 @@ impl client::Handler for Handler {
     async fn check_server_key(&mut self, server_key: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
         let key = match server_key {
             PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
-            PublicKeyOrCertificate::Certificate(c) => c.public_key().clone().into(),
+            PublicKeyOrCertificate::Certificate(_) => bail!("SSH host certificates are not supported; configure a pinned raw host key"),
         };
+        if key.algorithm().is_rsa() {
+            bail!("RSA SSH host keys are disabled; configure an Ed25519/ECDSA host key on the bastion");
+        }
         let fingerprint = key.fingerprint(keys::HashAlg::Sha256);
         // A changed key in either file is fatal (possible man-in-the-middle).
-        let system = keys::check_known_hosts(&self.host, self.port, &key);
-        let ours = keys::check_known_hosts_path(&self.host, self.port, &key, trunq_known_hosts());
-        for r in [&system, &ours] {
-            if let Err(keys::Error::KeyChanged { line }) = r {
-                bail!(
-                    "SSH host key for {} has CHANGED (known_hosts line {line}). This could be a man-in-the-middle attack. \
-                     If the server was reinstalled, remove the old key and try again. New fingerprint: {fingerprint}",
-                    self.host
-                );
-            }
-        }
-        if matches!(system, Ok(true)) || matches!(ours, Ok(true)) {
+        let system_path =
+            directories::BaseDirs::new().ok_or_else(|| anyhow!("could not determine SSH known_hosts home directory"))?.home_dir().join(".ssh/known_hosts");
+        let system = recorded_keys(&system_path, &self.host, self.port, &key)?;
+        let ours = recorded_keys(&trunq_known_hosts(), &self.host, self.port, &key)?;
+        if system || ours {
             return Ok(true);
         }
+        if !self.trust_new_hosts {
+            bail!("SSH host is not pinned; verify and add its raw host key to known_hosts before connecting. Fingerprint: {fingerprint}");
+        }
         // Trust on first use, recorded in Trunq's own known_hosts file.
-        keys::known_hosts::learn_known_hosts_path(&self.host, self.port, &key, trunq_known_hosts())
-            .map_err(|e| anyhow!("could not record SSH host key: {e}"))?;
+        use std::io::Write;
+        let mut file = crate::storage::open_private_append(&trunq_known_hosts()).context("could not record SSH host key")?;
+        let host = if self.port == 22 { self.host.clone() } else { format!("[{}]:{}", self.host, self.port) };
+        // Assemble one append record first so formatting cannot interleave
+        // separate field writes from simultaneous bastion handshakes.
+        file.write_all(format!("\n{host} {}\n", key.to_openssh()?).as_bytes()).context("could not record SSH host key")?;
         eprintln!("trunq: trusted new SSH host key for {}:{} ({fingerprint})", self.host, self.port);
         Ok(true)
     }
 }
 
 type Shared = Arc<client::Handle<Handler>>;
+type Slot = Arc<Mutex<Weak<client::Handle<Handler>>>>;
+static SESSIONS: LazyLock<Mutex<HashMap<String, Slot>>> = LazyLock::new(Default::default);
 
-static SESSIONS: LazyLock<Mutex<HashMap<String, Shared>>> = LazyLock::new(Default::default);
+/// Channels own the handle; the cache holds only a weak reference. When the
+/// final stream closes, russh's command receiver closes and its task exits.
+pub struct TunnelStream {
+    stream: russh::ChannelStream<client::Msg>,
+    _session: Shared,
+}
+
+impl AsyncRead for TunnelStream {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+impl AsyncWrite for TunnelStream {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.stream).poll_write(cx, buf)
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.stream).poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.stream).poll_shutdown(cx)
+    }
+}
 
 async fn connect(cfg: &SshConfig, secret: Option<&str>) -> Result<Shared> {
     if cfg.host.trim().is_empty() {
@@ -125,7 +184,7 @@ async fn connect(cfg: &SshConfig, secret: Option<&str>) -> Result<Shared> {
         keepalive_max: 3,
         ..Default::default()
     });
-    let handler = Handler { host: cfg.host.trim().to_string(), port: cfg.port };
+    let handler = Handler { host: cfg.host.trim().to_string(), port: cfg.port, trust_new_hosts: cfg.trust_new_hosts };
     let mut session = tokio::time::timeout(std::time::Duration::from_secs(15), client::connect(config, (cfg.host.trim(), cfg.port), handler))
         .await
         .map_err(|_| anyhow!("timeout connecting to SSH host {}:{}", cfg.host, cfg.port))?
@@ -141,6 +200,9 @@ async fn connect(cfg: &SshConfig, secret: Option<&str>) -> Result<Shared> {
         SshAuth::KeyFile => {
             let path = expand_home(&cfg.key_path);
             let key = keys::load_secret_key(&path, secret).with_context(|| format!("could not load SSH key {}", path.display()))?;
+            if key.algorithm().is_rsa() {
+                bail!("RSA SSH keys are disabled because the upstream RSA backend has an unpatched advisory; use Ed25519 or ECDSA");
+            }
             let hash = session.best_supported_rsa_hash().await?.flatten();
             ok = session.authenticate_publickey(&user, PrivateKeyWithHashAlg::new(Arc::new(key), hash)).await?.success();
         }
@@ -152,6 +214,9 @@ async fn connect(cfg: &SshConfig, secret: Option<&str>) -> Result<Shared> {
                 for id in ids {
                     let hash = session.best_supported_rsa_hash().await?.flatten();
                     let public = id.public_key().into_owned();
+                    if public.algorithm().is_rsa() {
+                        continue;
+                    }
                     if session.authenticate_publickey_with(&user, public, hash, &mut agent).await.map(|r| r.success()).unwrap_or(false) {
                         ok = true;
                         break;
@@ -160,7 +225,7 @@ async fn connect(cfg: &SshConfig, secret: Option<&str>) -> Result<Shared> {
             }
             if !ok {
                 // Fall back to the usual unencrypted default keys.
-                for name in ["id_ed25519", "id_ecdsa", "id_rsa"] {
+                for name in ["id_ed25519", "id_ecdsa"] {
                     let path = expand_home(&format!("~/.ssh/{name}"));
                     if !path.exists() {
                         continue;
@@ -192,30 +257,36 @@ fn expand_home(p: &str) -> PathBuf {
 }
 
 /// Opens a tunnelled stream to `host:port` (as seen from the SSH server).
-pub async fn open_channel(cfg: &SshConfig, secret: Option<&str>, host: &str, port: u16) -> Result<russh::ChannelStream<client::Msg>> {
+pub async fn open_channel(cfg: &SshConfig, secret: Option<&str>, host: &str, port: u16) -> Result<TunnelStream> {
     let key = cfg.key();
     let mut sessions = SESSIONS.lock().await;
-    // Drop sessions that died (network change, server restart...).
-    sessions.retain(|_, s| !s.is_closed());
-    let session = match sessions.get(&key) {
-        Some(s) => s.clone(),
+    sessions.retain(|_, slot| Arc::strong_count(slot) > 1 || slot.try_lock().map_or(true, |s| s.upgrade().is_some_and(|s| !s.is_closed())));
+    let slot = sessions.entry(key).or_default().clone();
+    drop(sessions);
+    // Serialize only this configuration's handshake, so a stalled bastion
+    // cannot block unrelated servers behind a global authentication lock.
+    let mut cached = slot.lock().await;
+    let session = match cached.upgrade().filter(|s| !s.is_closed()) {
+        Some(session) => session,
         None => {
-            let s = connect(cfg, secret).await?;
-            sessions.insert(key, s.clone());
-            s
+            let session = connect(cfg, secret).await?;
+            *cached = Arc::downgrade(&session);
+            session
         }
     };
-    drop(sessions);
+    drop(cached);
     let channel =
         session.channel_open_direct_tcpip(host, port as u32, "127.0.0.1", 0).await.with_context(|| format!("SSH server could not reach {host}:{port}"))?;
-    Ok(channel.into_stream())
+    Ok(TunnelStream { stream: channel.into_stream(), _session: session })
 }
 
 /// Closes all idle SSH sessions (called on exit).
 pub async fn close_all() {
-    let sessions: Vec<Shared> = SESSIONS.lock().await.drain().map(|(_, s)| s).collect();
-    for s in sessions {
-        let _ = s.disconnect(russh::Disconnect::ByApplication, "bye", "en").await;
+    let slots: Vec<Slot> = SESSIONS.lock().await.drain().map(|(_, s)| s).collect();
+    for slot in slots {
+        if let Some(s) = slot.lock().await.upgrade() {
+            let _ = s.disconnect(russh::Disconnect::ByApplication, "bye", "en").await;
+        }
     }
 }
 
@@ -226,12 +297,48 @@ mod live_tests {
     use super::*;
 
     #[test]
+    fn pinned_host_keys_reject_rotation_revocation_and_unreadable_files() {
+        let dir = std::env::temp_dir().join(format!("trunq-host-key-test-{}", rand::random::<u64>()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("known_hosts");
+        // Public keys only, generated for a disposable regression fixture.
+        let ed = "AAAAC3NzaC1lZDI1NTE5AAAAIJ9KgHxNtmf6lzT/Uq3PVZxfvR99ajadiFvm4Jac4YGi";
+        let ec = "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBP0O6pziWzzzGlS63RzKAwKnrtZyp8W0cIjBzabBmzER0nMhUx0IOykDsDrTxqHt0K9uwf4vANi5ap+mPx04wMQ=";
+        let key = keys::parse_public_key_base64(ed).unwrap();
+        assert!(!recorded_keys(&path, "db.example.com", 22, &key).unwrap());
+        std::fs::write(&path, format!("db.example.com ssh-ed25519 {ed}\n")).unwrap();
+        assert!(recorded_keys(&path, "db.example.com", 22, &key).unwrap());
+        let other_algorithm = keys::parse_public_key_base64(ec).unwrap();
+        assert!(recorded_keys(&path, "db.example.com", 22, &other_algorithm).unwrap_err().to_string().contains("CHANGED"));
+        std::fs::write(&path, format!("@revoked db.example.com ssh-ed25519 {ed}\n")).unwrap();
+        assert!(recorded_keys(&path, "db.example.com", 22, &key).unwrap_err().to_string().contains("revoked"));
+        assert!(recorded_keys(&dir, "db.example.com", 22, &key).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn tunnel_cache_keys_cannot_collide_via_field_separators() {
+        let a = SshConfig { host: "host:user".into(), user: "operator".into(), ..Default::default() };
+        let b = SshConfig { host: "host".into(), user: "user:operator".into(), ..Default::default() };
+        assert_ne!(a.key(), b.key());
+        assert_ne!(a.key(), SshConfig { trust_new_hosts: false, ..a.clone() }.key());
+    }
+
+    #[test]
     fn tunnel_roundtrip() {
         let (Ok(ssh), Ok(url)) = (std::env::var("TRUNQ_TEST_SSH"), std::env::var("TRUNQ_TEST_DATABASE_URL")) else { return };
         let (target, key) = ssh.split_once('|').unwrap();
         let (user, hostport) = target.split_once('@').unwrap();
         let (host, port) = hostport.split_once(':').unwrap();
-        let cfg = SshConfig { enabled: true, host: host.into(), port: port.parse().unwrap(), user: user.into(), auth: SshAuth::KeyFile, key_path: key.into() };
+        let cfg = SshConfig {
+            enabled: true,
+            host: host.into(),
+            port: port.parse().unwrap(),
+            user: user.into(),
+            auth: SshAuth::KeyFile,
+            key_path: key.into(),
+            ..Default::default()
+        };
         let (profile, pw) = crate::config::Profile::from_url(&url).unwrap();
         let mut params = profile.connect_params("", pw.as_deref()).unwrap();
         params.password = pw;
@@ -253,6 +360,12 @@ mod live_tests {
             let err = a.simple_query("SELECT pg_sleep(5)").await.unwrap_err();
             assert!(format!("{err}").contains("cancel"));
             h.await.unwrap();
+            let slot = SESSIONS.lock().await.values().next().unwrap().clone();
+            assert!(slot.lock().await.strong_count() > 0);
+            a.terminate().await;
+            assert!(slot.lock().await.strong_count() > 0, "second connection still owns tunnel");
+            b.terminate().await;
+            assert_eq!(slot.lock().await.strong_count(), 0, "cache must not retain an idle SSH handle");
             close_all().await;
         });
     }

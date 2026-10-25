@@ -69,8 +69,12 @@ Docker image tags identify separate channels:
 | `dev` | The newest successfully published development build of `main` |
 | `sha-<commit>` | An image identified by its source commit |
 
-`latest` is a mutable Docker tag. The workflow updates it when publishing a stable version tag; it is independent of GitHub's latest-release designation. Nightly desktop downloads are separate scheduled snapshots of the development branch.
+`latest` is a mutable Docker tag. The workflow updates it when publishing a stable version tag; it is independent of GitHub's latest-release designation. Nightly desktop downloads are separate scheduled snapshots of the default branch.
 
 Version tags such as `v0.1.0` publish version and major/minor image tags plus a commit tag. Stable version tags also update `latest`; prereleases and branch builds leave it unchanged. Manual runs follow the selected ref: `main` updates `dev`, a stable version tag updates the release tags, and other branches publish only a commit tag. Without the namespace, the publish job is skipped. Both amd64 and arm64 are built for publication; the pre-publication runtime smoke test currently runs on amd64.
 
 No image has been pushed as part of the local implementation. A Docker Hub namespace and token must be configured before publication.
+
+## Production access and local secrets
+
+Keep noVNC on loopback or behind your authenticated transport. A database's least-privilege login and verified PostgreSQL TLS are still required inside the tunnel/container. Protect the persisted workspace and mounted pgpass/certificate/key files; Unix pgpass files must have no group/other access. CLI helper binaries and login environments must exist inside the container. Native SSH supports Ed25519/ECDSA and can require pre-pinned host keys. See [production guidance](production.md) for upgrade and audit boundaries.

@@ -130,3 +130,11 @@ For a plan, start with plain EXPLAIN. Use EXPLAIN ANALYZE only when running the 
 **Slow queries (pg_stat_statements)** opens an editable query against that extension. Your administrator must preload and install the extension in the relevant database. Its statistics are aggregated since the applicable reset, rather than a list of individual executions.
 
 For relationships, open **ER diagram** from a schema, database or table. Schema entry points limit the graph and table entry points focus its neighbourhood. The graph reflects catalogued foreign keys; application-only relationships do not appear automatically. See [the feature reference](features.md#explore-relationships-and-database-metadata) for screenshots.
+
+## Review a production operation
+
+Confirm the profile/database/user, use server-enforced least privilege and review the complete SQL before applying changes. The [production guide](production.md) covers verified TLS, pinned SSH and credential migration. For extensions use [Manage extensions](extensions.md); for schedules/auditing use [Database tools](administration.md). Local history is not an audit log.
+
+![Monthly revenue chart from the sample database](screenshots/chart-revenue.png)
+
+This chart aggregates `shop.orders` by month with `date_trunc` before plotting, using only sample data. The chart reflects its query result rather than grid filter chips. See [performance](performance.md#chart-preparation-cache-25-october-2026) for cache behavior and memory costs.

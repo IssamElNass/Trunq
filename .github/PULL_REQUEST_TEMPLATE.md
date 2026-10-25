@@ -6,6 +6,8 @@
 
 - [ ] `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` pass
 - [ ] `cargo test` passes (and `live_tests` against a real PostgreSQL if the protocol layer changed)
+- [ ] `python3 scripts/check-docs.py` passes; matching handbook text/defaults updated
+- [ ] Dependency/authentication changes audited; migration/compatibility limits documented
 - [ ] Screenshots attached for UI changes (`TRUNQ_SCRIPT` can capture them)
 - [ ] `CHANGELOG.md` updated under **Unreleased**
 
