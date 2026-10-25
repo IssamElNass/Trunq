@@ -33,6 +33,13 @@ Optional fixture checks:
 - `TRUNQ_TEST_TLS_CA`, `TRUNQ_TEST_TLS_CERT`, `TRUNQ_TEST_TLS_KEY`: PEM CA/client chain and unencrypted PKCS #8 key. Point `TRUNQ_TEST_DATABASE_URL` at a TLS-enabled server reached as `localhost`, whose server certificate covers only `localhost`, and configure certificate-only authentication for role `cert_user` (certificate CN). `cargo test --locked custom_ca_and_client_certificate_authentication` verifies chain/hostname failures and client authentication. Include IPv4/IPv6 local access in the fixture.
 - Without those variables, these optional tests return early. The ordinary suite still tests helper bounds, SSL timeouts, argument substitution and restricted-role catalog queries. Real provider logins/CLI selection require separate cloud infrastructure.
 
+For pg_cron integration, supply `TRUNQ_TEST_CRON_DATABASE_URL` for a separate disposable superuser database with pg_cron in `shared_preload_libraries` and matching `cron.database_name`. The test creates role/job fixtures in a rolled-back transaction; no active fixture is committed. It checks scoped edits, literal escaping, restricted roles, missing schema privileges and row security:
+
+```sh
+TRUNQ_TEST_CRON_DATABASE_URL=postgres://postgres@localhost:5432/postgres \
+  cargo test --locked pg_cron -- --nocapture
+```
+
 The [performance guide](performance.md) explains the opt-in benchmarks and their measurement limits. The [website guide](../website/README.md#check-website-changes) covers the browser checks, including the handbook's mobile navigation, search and copy controls.
 
 ## Code layout and scripted UI
@@ -57,7 +64,7 @@ src/
   Regenerate the sample gallery with `TRUNQ_TEST_DATABASE_URL=postgres://… python3 scripts/screenshots.py` after loading `dev/sample.sql` into a disposable database. The script uses an isolated temporary configuration and converts images to WebP when `cwebp` is installed.
 
   Steps: `wait:<s>`, `run`, `runall`, `dryrun`, `explain[:analyze]`, `sql:<text>` (separate with `;;`), `open:<schema.table>`,
-  `tab:<n>`, `palette:<query>`, `health`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
+  `tab:<n>`, `palette:<query>`, `health`, `grants`, `cron`, `inspect:view=objects|defaults|memberships`, `inspect:role=<name>`, `inspect:search=<text>`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
   `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 
@@ -70,7 +77,7 @@ The [Release workflow](../.github/workflows/release.yml) uses one set of packagi
 1. Update `version` in `Cargo.toml`, keep `Cargo.lock` in sync, and move the relevant **Unreleased** notes into a matching section in `CHANGELOG.md`.
 2. Complete the normal checks and commit the release changes.
 3. Create and push the matching tag, for example `git tag v0.2.0 && git push origin v0.2.0` for package version `0.2.0`.
-4. The workflow verifies the tag/version match, builds a universal macOS `.dmg` and `.app.zip`, a Linux `.deb` and `.tar.gz`, and a Windows `.zip`.
+4. The workflow verifies the tag/version match, builds a universal macOS `.dmg` and `.app.zip`, a Linux `.deb` and `.tar.gz`, and a Windows portable `.exe` plus `.zip`.
 5. After every platform succeeds, it assembles `SHA256SUMS.txt` and release notes, then publishes the GitHub Release. A Cargo prerelease version produces a GitHub prerelease.
 
 To rebuild an existing tag, run **Actions → Release → Run workflow** from the updated default branch and enter that tag as the `tag` input. The workflow's metadata tooling is loaded separately from the source tag, so old tags do not need to contain the new nightly helper. Add the `APPLE_*` secrets listed in the workflow to enable signing and notarization; otherwise macOS uses the bundle script's ad-hoc signing.
@@ -83,7 +90,7 @@ To rebuild an existing tag, run **Actions → Release → Run workflow** from th
 | Source | Latest default-branch source for scheduled/manual nightly builds, fixed to one SHA for every package |
 | Identity | `nightly-YYYYMMDD-<run-number>-g<short-sha>` |
 | Checks | Unit tests in each platform job, followed by all platform release builds and packaging |
-| Downloads | Same platform formats as stable, plus `BUILD_INFO.txt` and `SHA256SUMS.txt` |
+| Downloads | Same platform formats as stable, with direct download links, plus `BUILD_INFO.txt` and `SHA256SUMS.txt` |
 | Publication | A separate dated prerelease; it does not become the latest stable release |
 | Debian version | `<base-version>~nightly.<date>.<run>+g<sha>`, which sorts before the matching stable version |
 | Actions artifact retention | 7 days for snapshots; release assets remain on the GitHub Release |
@@ -94,12 +101,12 @@ The app's displayed version remains the Cargo source version. Identify a snapsho
 
 ### Packaging previews and workflow maintenance
 
-Pull requests changing the release workflow, metadata helpers/tests or macOS bundle script build snapshot packages and assemble a `release-bundle` artifact. Publication is skipped on pull requests, and macOS signing/notarization is skipped there too. Preview artifacts require access to that Actions run and are retained for seven days.
+Pull requests changing the release workflow, metadata/download helpers and tests or macOS bundle script build snapshot packages and assemble a `release-bundle` artifact. Publication is skipped on pull requests, and macOS signing/notarization is skipped there too. Preview artifacts require access to that Actions run and are retained for seven days.
 
 The metadata step has Python 3.12 configured; local checks require Python 3.11 or newer. Run its standard-library checks locally:
 
 ```sh
-python3 -m unittest discover -s scripts -p test_release_metadata.py -v
+python3 -m unittest discover -s scripts -p 'test_release_*.py' -v
 ```
 
 Run `actionlint .github/workflows/release.yml` when actionlint is available. Keep `scripts/release-metadata.py` responsible for channel routing, version validation, exact source identity and Debian ordering; do not duplicate those decisions across platform jobs. The assembly job creates provenance, checksums and notes before the publishing job receives write permission.

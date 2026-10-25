@@ -103,3 +103,25 @@ Real Azure, OS-keychain, Windows and arm64 runtime tests require their respectiv
 [The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 desktop before enabling a multi-platform registry publication. Docker Hub credentials have not been configured or used by this local work.
 
 The native macOS close check initially reproduced the AppKit Touch Bar observer crash described in [egui #2768](https://github.com/emilk/egui/issues/2768). The client now selects eframe’s standalone exit path on macOS, which saves and destroys application state before exiting.
+
+## 25 October 2026: grants, extensions, pg_cron and release downloads
+
+Linux, Rust 1.95, PostgreSQL 17, plus a separate disposable PostgreSQL 17 server with pg_cron 1.6.5 preloaded. Source, tests, SQL paths and native UI were reviewed for automatic mutations, SQL quoting, permissions and repeated work.
+
+| Check | Result |
+|---|---|
+| Build, rustfmt and Clippy with warnings denied | Passed |
+| Full suite with database and pg_cron fixtures | 109 passed, 0 failed; four opt-in benchmarks also run separately and passed |
+| Release metadata / direct download links | Six Python checks passed; actionlint 1.7.12 passed |
+| Documentation and public handbook | 279 local links/images and 13 browser checks passed; the privilege reference explains SELECT/read, write rights, ALL expansion and grant option; pg_cron instructions match the new UI |
+| Grants integration | Tables, views, materialized views, columns, sequences, routines, enum/composite types, schemas, original grantor, PUBLIC, grant options, RLS and future defaults checked; generated GRANT / REVOKE statements executed in savepoints |
+| Role tracing and restricted readers | Nested role paths, NO INHERIT and membership cycles checked; restricted readers can inspect catalog ACLs omitted by information_schema |
+| pg_cron integration | Pause / enable / schedule / command changes affect the selected job only; quoting round trips; restricted settings and missing schema privileges do not break detection; row security hides other roles' jobs |
+| Mutation boundary | Inspector reads use repeatable-read, read-only transactions. New grant and cron mutation actions generate SQL with `run: false`. The existing extension manager retains its explicit Apply action and production/read-only checks. Cron does not change database or run-as role |
+| Native UI | Grants, defaults, memberships, extensions and cron rendered; dark/light themes, a 1024×768 window, and a read-only connection inspected. Screenshots use a separate preview database; all preview jobs are paused |
+| Performance | The [same-environment checks](performance.md#25-october-2026-grants-inspector-and-query-path-check) retain the existing query-cache behavior and measure virtualized frames for 100,000 grants |
+
+No critical issue remained in the paths exercised by these checks. The permission review found and fixed pg_cron detection failures for roles lacking schema USAGE or access to restricted server settings. Catalog processing moved off the UI thread, and grant facets, filters and role paths avoid repeated scans. The inventory is an ACL snapshot, not a historical audit or a complete effective-access calculation.
+
+The final work is integrated with main commit `9bf1377`, preserving its extension manager and security changes. macOS / Windows packaging, signing and the full PostgreSQL 13–18 matrix require CI. Local pg_cron integration needs `TRUNQ_TEST_CRON_DATABASE_URL`; CI's ordinary PostgreSQL service does not preload that extension. SSH, Azure and OS keychains were not exercised here. The release workflow still skips publication and signing for pull requests; adding the EXE does not publish a release from this review.
+

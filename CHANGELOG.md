@@ -7,6 +7,9 @@ All notable changes to Trunq are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Grants inspector with catalog ACLs, inherited role traces, default privileges, PUBLIC / grant-option filters, CSV copying and reviewable permission SQL.
+- pg_cron inspector with schedules, SQL editing, recent runs and reviewable pause / enable / update statements; read-only connections disable edits.
+- Standalone Windows EXE release assets and direct platform download links in stable and nightly notes.
 - Production deployment/upgrade guide, dated security findings, nine new native screenshots and automated Markdown link/image checks.
 - Weekly and dependency-change RustSec audit with retained JSON reports.
 - Strict pinned-host SSH option; native SSH now requires Ed25519/ECDSA after removing the unresolved RSA timing advisory dependency.

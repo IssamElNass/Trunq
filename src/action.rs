@@ -44,6 +44,15 @@ pub enum Action {
         profile: u64,
         db: String,
     },
+    OpenGrants {
+        profile: u64,
+        db: String,
+        search: String,
+    },
+    OpenCron {
+        profile: u64,
+        db: String,
+    },
     OpenExtensions {
         profile: u64,
         db: String,

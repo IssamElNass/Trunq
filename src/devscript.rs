@@ -28,6 +28,8 @@ pub enum Step {
     History,
     Palette(String),
     Health,
+    Grants,
+    Cron,
     Chart,
     /// Query-tab level helpers: card, compare, value:r,c, pin, side, search:x, ts:utc
     TabDev(String, String),
@@ -76,8 +78,12 @@ impl Script {
                     "history" => Step::History,
                     "palette" => Step::Palette(arg.to_string()),
                     "health" => Step::Health,
+                    "grants" => Step::Grants,
+                    "cron" => Step::Cron,
                     "chart" => Step::Chart,
-                    "card" | "compare" | "value" | "pin" | "side" | "search" | "ts" | "finder" | "hideempty" => Step::TabDev(cmd.to_string(), arg.to_string()),
+                    "card" | "compare" | "value" | "pin" | "side" | "search" | "ts" | "finder" | "hideempty" | "inspect" => {
+                        Step::TabDev(cmd.to_string(), arg.to_string())
+                    }
                     "sessions" => Step::Sessions,
                     "structure" => Step::Structure(arg.to_string()),
                     "erd" => Step::Erd(arg.to_string()),

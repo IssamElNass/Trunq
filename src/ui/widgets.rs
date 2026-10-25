@@ -12,6 +12,51 @@ pub const H: f32 = 32.0;
 pub const H_SMALL: f32 = 28.0;
 pub const RADIUS: u8 = 8;
 
+/// Shared inspector detail surface, using the same spacing and borders as controls.
+pub fn card<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    let p = theme::p();
+    egui::Frame::NONE.fill(p.bg1).stroke(Stroke::new(1.0, p.border)).corner_radius(RADIUS).inner_margin(Margin::same(16)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        body(ui)
+    })
+}
+
+pub fn empty_state(ui: &mut Ui, ico: &str, title: &str, detail: &str) {
+    ui.add_space(20.0);
+    ui.vertical_centered(|ui| {
+        ui.label(RichText::new(ico).size(28.0).color(theme::p().faint));
+        ui.label(RichText::new(title).font(theme::bold(15.0)));
+        ui.label(RichText::new(detail).color(theme::p().dim));
+    });
+    ui.add_space(20.0);
+}
+
+/// Two-line inspector choice with the same selection, type and focus scale.
+pub fn list_item(ui: &mut Ui, selected: bool, ico: &str, title: &str, detail: &str) -> Response {
+    let p = theme::p();
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), Sense::click());
+    let fill = if selected {
+        p.accent_soft
+    } else if response.hovered() {
+        p.control_hover
+    } else {
+        p.control
+    };
+    ui.painter().rect(rect, CornerRadius::same(RADIUS), fill, Stroke::new(1.0, if selected { p.accent } else { p.border }), StrokeKind::Inside);
+    ui.painter().text(
+        pos2(rect.left() + 20.0, rect.center().y),
+        Align2::CENTER_CENTER,
+        ico,
+        FontId::proportional(16.0),
+        if selected { p.accent } else { p.dim },
+    );
+    let title_galley = truncated(ui, title, theme::bold(13.5), p.text, rect.width() - 52.0);
+    let detail_galley = truncated(ui, detail, FontId::proportional(12.0), p.dim, rect.width() - 52.0);
+    ui.painter().galley(pos2(rect.left() + 40.0, rect.top() + 7.0), title_galley, p.text);
+    ui.painter().galley(pos2(rect.left() + 40.0, rect.top() + 27.0), detail_galley, p.dim);
+    response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(format!("{title}\n{detail}"))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     /// The one main action of an area (blue).
@@ -683,6 +728,19 @@ pub fn truncated(ui: &Ui, text: &str, font: FontId, color: Color32, max_w: f32) 
 /// subtitle and right-aligned actions.
 pub fn page_header(ui: &mut Ui, ico: &str, color: Color32, title: &str, subtitle: &str, actions: impl FnOnce(&mut Ui)) {
     let p = theme::p();
+    if ui.available_width() < 740.0 {
+        ui.horizontal(|ui| {
+            let (r, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
+            ui.painter().rect_filled(r, CornerRadius::same(10), color.gamma_multiply(0.14));
+            ui.painter().text(r.center(), Align2::CENTER_CENTER, ico, FontId::proportional(18.0), color);
+            ui.label(RichText::new(title).font(theme::bold(18.0)).color(p.text));
+        });
+        if !subtitle.is_empty() {
+            ui.add(egui::Label::new(RichText::new(subtitle).size(12.5).color(p.dim)).wrap());
+        }
+        ui.horizontal_wrapped(actions);
+        return;
+    }
     ui.horizontal(|ui| {
         let (r, _) = ui.allocate_exact_size(Vec2::splat(42.0), Sense::hover());
         ui.painter().rect_filled(r, CornerRadius::same(10), color.gamma_multiply(0.14));

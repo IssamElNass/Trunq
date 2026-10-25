@@ -100,13 +100,13 @@ Keep database events separate from cloud control-plane events (for example chang
 | Area | Available now | Remaining gap |
 |---|---|---|
 | Types, domains, enums, ranges, composites | Schema tree, details and sidebar search; server text representation in results | Dedicated type creation/alteration forms and complete type DDL extraction |
-| Roles and tablespaces | Server tree, attributes/membership and copyable role DDL | Full privilege editor, ownership/dependency migration and tablespace creation wizard |
+| Roles and tablespaces | Server tree, copyable role DDL, grants inventory and membership traces | Complete effective-access calculation, ownership/dependency migration and tablespace creation wizard |
 | Extensions | Searchable manager, version/schema/dependency choices, direct enable/update, installed tree and SQL inventory | Automatic provider flag changes, binary installation and restart orchestration |
 | Event triggers and publications | Database tree from the existing metadata snapshot | Full editing forms and publication table/row-filter details |
 | Foreign data wrappers/servers | On-demand names/owners/table inventory | Secret-aware mapping editor; no options shown by default |
 | Logical replication | Publication operations including TRUNCATE, slot and subscription-worker inspection | Subscription editor, connection-secret management, lag alerts and version-specific configuration UI |
 | Auditing | Configuration and security inspections, install/test guidance | Complete effective-privilege analysis, log ingestion, policy enforcement and compliance reporting |
-| Jobs | pg_cron SQL templates and recent-run inspection | Interactive calendar/job editor, execution alerts, provider-specific schedulers |
+| Jobs | pg_cron job list, schedule/SQL editor, reviewable pause/enable/update and recent runs; SQL templates remain available | Calendar scheduling, execution alerts and provider-specific schedulers |
 | Other catalogs | Normal SQL access | Dedicated views for collations, languages, operators/opclasses, casts, text search and extended statistics |
 
 These gaps are explicit: connecting successfully is not proof of full administrative support for a managed service. The [research notes](postgresql-research.md) prioritize further work by capability and measured cost.
@@ -118,3 +118,9 @@ The function permission defaults are also visible in [pg_cron’s 1.4 migration]
 ![Visible PostgreSQL logging and preload settings](screenshots/audit-settings.png)
 
 This native query runs against the disposable PostgreSQL 17 sample server. Absent pgAudit rows mean that this particular server has not loaded those settings, not that a production audit pipeline is complete. For a real rollout, inspect the complete administration recipe and verify a representative event at the retained log destination. See [production operations](production.md#extensions-schedules-and-audit-evidence).
+
+## Inspect grants and edit scheduled jobs
+
+Open **Grants & access** under a database to inspect concrete privileges such as `SELECT` (read), `INSERT`, `UPDATE` and `DELETE`, plus owner, grantor and membership paths. PostgreSQL expands `GRANT ALL` into individual privileges; grant option is a separate ability to pass a right onward. See the [privilege reference](features.md#grants-and-access-tracing) for object types, filters, defaults and limits.
+
+Open **Cron jobs** to browse pg_cron schedules, commands, active status and recent runs. Edit the schedule/SQL, then open the generated pause, enable or update statement for review. Changes are applied only when you execute that SQL; read-only profiles disable edits. See [job controls](features.md#scheduled-jobs-pg_cron). The database must have pg_cron installed and your role must have the required schema/table/function privileges. Existing Database tools SQL templates remain available.

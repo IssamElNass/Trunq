@@ -98,6 +98,8 @@ pub enum Tab {
     Sessions(crate::tabs::sessions::SessionsTab),
     Structure(crate::tabs::structure::StructureTab),
     Erd(crate::tabs::erd::ErdTab),
+    Grants(crate::tabs::grants::GrantsTab),
+    Cron(crate::tabs::cron::CronTab),
 }
 
 impl Tab {
@@ -108,6 +110,8 @@ impl Tab {
             Tab::Sessions(s) => Some(s.profile_id),
             Tab::Structure(s) => Some(s.profile_id),
             Tab::Erd(e) => Some(e.profile_id),
+            Tab::Grants(g) => Some(g.profile_id),
+            Tab::Cron(c) => Some(c.profile_id),
         }
     }
 }
@@ -368,6 +372,18 @@ impl App {
                 Action::OpenHealth { profile, db } => {
                     self.tabs.push(Tab::Health(crate::tabs::health::HealthTab::new(profile, &db)));
                     self.active = self.tabs.len() - 1;
+                }
+                Action::OpenGrants { profile, db, search } => {
+                    self.tabs.push(Tab::Grants(crate::tabs::grants::GrantsTab::new(profile, &db, search)));
+                    self.active = self.tabs.len() - 1;
+                }
+                Action::OpenCron { profile, db } => {
+                    if let Some(i) = self.tabs.iter().position(|t| matches!(t,Tab::Cron(c) if c.profile_id==profile && c.database==db)) {
+                        self.active = i;
+                    } else {
+                        self.tabs.push(Tab::Cron(crate::tabs::cron::CronTab::new(profile, &db)));
+                        self.active = self.tabs.len() - 1;
+                    }
                 }
                 Action::OpenExtensions { profile, db, selected } => {
                     if let Some(p) = self.profile(profile).cloned() {
@@ -774,6 +790,14 @@ impl App {
                 actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: String::new(), run: false });
             }
             r.context_menu(|ui| {
+                if w::menu_item(ui, icon::KEY, "Grants & access").clicked() {
+                    actions.push(Action::OpenGrants { profile: pid, db: db.clone(), search: String::new() });
+                    ui.close();
+                }
+                if w::menu_item(ui, icon::TIMER, "Cron jobs (pg_cron)").clicked() {
+                    actions.push(Action::OpenCron { profile: pid, db: db.clone() });
+                    ui.close();
+                }
                 if w::menu_item(ui, icon::PLUG, "Manage extensions…").clicked() {
                     actions.push(Action::OpenExtensions { profile: pid, db: db.clone(), selected: None });
                     ui.close();
@@ -842,6 +866,17 @@ impl App {
                 });
                 continue;
             };
+            for (label, ico, action) in [
+                ("Grants & access", icon::KEY, Action::OpenGrants { profile: pid, db: db.clone(), search: String::new() }),
+                ("Cron jobs", icon::TIMER, Action::OpenCron { profile: pid, db: db.clone() }),
+            ] {
+                if filter.is_empty() || label.to_lowercase().contains(filter) {
+                    let (r, _) = tree_row(ui, 2, None, ico, pal.accent, label, "", None, false, false);
+                    if r.clicked() {
+                        actions.push(action);
+                    }
+                }
+            }
             let user_schemas = cat.schemas.iter().filter(|s| !s.is_system).count();
             database_objects_tree(ui, node, &cat, pid, &db, filter, actions);
             for schema in &cat.schemas {
@@ -893,6 +928,7 @@ impl App {
                     }
                 }
                 r.context_menu(|ui| {
+                    if w::menu_item(ui,icon::KEY,"Explore grants").clicked() {actions.push(Action::OpenGrants {profile:pid,db:db.clone(),search:schema.name.clone()});ui.close();}
                     if w::menu_item(ui, icon::NETWORK, "ER diagram").clicked() {
                         actions.push(Action::OpenErd { profile: pid, db: db.clone(), schema: Some(schema.name.clone()), focus: None });
                         ui.close();
@@ -1121,6 +1157,8 @@ impl App {
                         Tab::Sessions(s) => (s.title.clone(), false, false, false),
                         Tab::Structure(s) => (s.title.clone(), false, false, false),
                         Tab::Erd(e) => (e.title.clone(), false, false, false),
+                        Tab::Grants(g) => (g.title.clone(), false, false, false),
+                        Tab::Cron(c) => (c.title.clone(), false, false, false),
                     };
                     let color = t.profile().and_then(|p| self.profile(p)).and_then(|p| p.color).map(theme::rgb);
                     let ico = match t {
@@ -1128,6 +1166,8 @@ impl App {
                         Tab::Sessions(_) => icon::ACTIVITY,
                         Tab::Structure(_) => icon::TABLE_PROPS,
                         Tab::Erd(_) => icon::NETWORK,
+                        Tab::Grants(_) => icon::KEY,
+                        Tab::Cron(_) => icon::TIMER,
                         _ if is_table => icon::TABLE,
                         _ => icon::FILE_CODE,
                     };
@@ -1972,10 +2012,17 @@ impl eframe::App for App {
             let catalog = match &self.tabs[active] {
                 Tab::Query(q) => self.catalog(q.profile_id, &q.database),
                 Tab::Erd(e) => self.catalog(Some(e.profile_id), &e.database),
-                Tab::Health(_) | Tab::Sessions(_) | Tab::Structure(_) => None,
+                Tab::Health(_) | Tab::Sessions(_) | Tab::Structure(_) | Tab::Grants(_) | Tab::Cron(_) => None,
             };
             // Background polling for inactive tabs (so results keep streaming in).
             for (i, t) in self.tabs.iter_mut().enumerate() {
+                if i != active {
+                    match t {
+                        Tab::Grants(g) => g.poll(self.cfg.profiles.iter().find(|p| p.id == g.profile_id), self.passwords.get(&g.profile_id).cloned(), ui.ctx()),
+                        Tab::Cron(c) => c.poll(self.cfg.profiles.iter().find(|p| p.id == c.profile_id), self.passwords.get(&c.profile_id).cloned(), ui.ctx()),
+                        _ => {}
+                    }
+                }
                 let Tab::Query(q) = t else { continue };
                 q.maintenance();
                 if i != active {
@@ -2008,6 +2055,16 @@ impl eframe::App for App {
                         self.servers.iter().find(|s| s.profile_id == st.profile_id).and_then(|s| s.root.as_ref()).filter(|r| r.connected).map(|r| r.handle());
                     let name = self.cfg.profiles.iter().find(|p| p.id == st.profile_id).map(|p| p.display_name()).unwrap_or_default();
                     st.ui(ui, handle, &name);
+                    return;
+                }
+                Tab::Grants(g) => {
+                    let p = self.cfg.profiles.iter().find(|p| p.id == g.profile_id);
+                    g.ui(ui, p, self.passwords.get(&g.profile_id).cloned(), &mut actions);
+                    return;
+                }
+                Tab::Cron(c) => {
+                    let p = self.cfg.profiles.iter().find(|p| p.id == c.profile_id);
+                    c.ui(ui, p, self.passwords.get(&c.profile_id).cloned(), &mut actions);
                     return;
                 }
                 Tab::Structure(st) => {
@@ -2224,6 +2281,20 @@ impl App {
                         PaletteCmd::Act(Action::NewQuery { profile: s.profile_id, db: db.clone(), sql: recipe.sql.into(), run: false }),
                     ));
                 }
+                items.push((
+                    icon::KEY,
+                    pal.accent,
+                    format!("Grants & access · {db}"),
+                    "privileges roles PUBLIC defaults".into(),
+                    PaletteCmd::Act(Action::OpenGrants { profile: s.profile_id, db: db.clone(), search: String::new() }),
+                ));
+                items.push((
+                    icon::TIMER,
+                    pal.accent,
+                    format!("Cron jobs · {db}"),
+                    "pg_cron schedule pause enable history".into(),
+                    PaletteCmd::Act(Action::OpenCron { profile: s.profile_id, db: db.clone() }),
+                ));
                 items.push((
                     icon::NETWORK,
                     pal.accent,
@@ -2548,11 +2619,11 @@ impl App {
                     d.start(ctx, &self.cfg.profiles, &self.passwords);
                 }
             }
-            Step::TabDev(cmd, arg) => {
-                if let Some(Tab::Query(q)) = self.tabs.get_mut(self.active) {
-                    q.dev(&cmd, &arg);
-                }
-            }
+            Step::TabDev(cmd, arg) => match self.tabs.get_mut(self.active) {
+                Some(Tab::Query(q)) => q.dev(&cmd, &arg),
+                Some(Tab::Grants(g)) if cmd == "inspect" => g.dev(&arg),
+                _ => {}
+            },
             Step::Sessions => {
                 if let Some((pid, _)) = profile {
                     actions.push(Action::OpenDashboard { profile: pid });
@@ -2579,6 +2650,16 @@ impl App {
                     && let Some(p) = q.panes.first_mut()
                 {
                     p.chart = Some(Default::default());
+                }
+            }
+            Step::Grants => {
+                if let Some((pid, db)) = profile {
+                    actions.push(Action::OpenGrants { profile: pid, db, search: String::new() });
+                }
+            }
+            Step::Cron => {
+                if let Some((pid, db)) = profile {
+                    actions.push(Action::OpenCron { profile: pid, db });
                 }
             }
             Step::Health => {
@@ -2837,6 +2918,10 @@ fn relation_menu(ui: &mut Ui, pid: u64, db: &str, rel: &meta::Relation, actions:
     }
     if rel.kind.has_data() && w::menu_item(ui, icon::PLAY, "Query (SELECT … LIMIT 100)").clicked() {
         actions.push(Action::NewQuery { profile: pid, db: db.clone(), sql: format!("SELECT *\nFROM {}\nLIMIT 100;", rel.qualified()), run: true });
+        ui.close();
+    }
+    if w::menu_item(ui, icon::KEY, "Explore grants").clicked() {
+        actions.push(Action::OpenGrants { profile: pid, db: db.clone(), search: rel.name.clone() });
         ui.close();
     }
     if w::menu_item(ui, icon::CODE, "Show DDL").clicked() {

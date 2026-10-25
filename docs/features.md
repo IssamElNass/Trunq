@@ -169,3 +169,49 @@ Example profile only; live provider prerequisites are documented in the cloud gu
 ![Data viewer at 900 × 620 logical pixels](screenshots/compact.png)
 
 </details>
+
+### Grants and access tracing
+
+<p><img src="screenshots/grants-dark.png" alt="Grant source and inherited role path" width="900"></p>
+
+Open **Grants & access** under a database in the sidebar, its context menu or the command palette. A table or schema context menu opens a prefilled search.
+
+- Browse table, view, materialized view, foreign table, column, sequence, schema, routine, type, current database, language, foreign server / wrapper, tablespace and large-object ACLs. Catalog queries include grants that `information_schema.role_table_grants` can hide from the connected role.
+- Filter by role, schema, object type, grant option, PUBLIC access and text. System schemas are hidden initially. Copy the filtered inventory as CSV.
+- Select a privilege to see its owner, original grantor, recipient and a role-membership path. Role filters can include indirect memberships and PUBLIC. `NO INHERIT` paths remain visible with an explicit warning; they are not reported as automatic access. **Memberships** shows direct role edges, grantors, ADMIN, INHERIT and SET ROLE options, including PostgreSQL 16+ per-membership options.
+- **Default privileges** lists future-object ACL rules separately from existing-object grants and built-in ACL defaults. Global and per-schema rules combine.
+- Copy a GRANT statement or open a REVOKE statement for review. Changes run only when you execute the SQL yourself. REVOKE does not add CASCADE. RLS-enabled objects link to their policies.
+
+The **Privilege** column shows the exact PostgreSQL right, one per row:
+
+| Privilege | Meaning |
+|---|---|
+| `SELECT` | Read rows or values |
+| `INSERT`, `UPDATE`, `DELETE` | Add, change or remove rows |
+| `TRUNCATE`, `REFERENCES`, `TRIGGER` | Empty a table, reference it with a foreign key, or create triggers |
+| `USAGE`, `CREATE` | Use or create objects, depending on the selected object type |
+| `EXECUTE` | Call a function or procedure |
+| `CONNECT`, `TEMPORARY` | Connect to a database or create temporary objects |
+| `MAINTAIN` | Table maintenance on PostgreSQL versions that support this privilege |
+
+`GRANT ALL` is stored by PostgreSQL as the individual privileges available for that object type and server version. The inspector expands them into their concrete rows; it cannot tell whether they originally came from one ALL statement or several individual GRANT statements. **WITH GRANT OPTION** means the recipient can grant that privilege onward; it does not mean ALL. Use the search box for a privilege such as `SELECT` or `INSERT`, and select the role/object to inspect its scope and source.
+
+This is a refreshable snapshot of the selected database, with shared tablespace ACLs and cluster role memberships. It does not record historical changes or claim complete effective authorization: schema USAGE, database CONNECT, RLS, object ownership, superuser privileges and predefined roles also affect access. Owners retain implicit management rights even when their ordinary ACL privileges have been revoked. Inspect each database separately.
+
+### Extension UI
+
+<p><img src="screenshots/extension-manager-ui.png" alt="Extension manager using shared list components" width="900"></p>
+
+The [extension manager](extensions.md) remains the single entry point for available versions, dependencies, provider requirements and explicit install/update actions. Its virtualized extension list now uses a shared two-line choice component with consistent selection, icons and truncation. Read-only and recovery safeguards remain in effect.
+
+### Scheduled jobs (pg_cron)
+
+<p><img src="screenshots/cron-jobs.png" alt="Cron job schedules and reviewable SQL editing" width="900"></p>
+
+Open **Cron jobs** under a database or from its context menu / command palette. Trunq detects pg_cron and explains when it is absent, installed in another database, or unavailable to your role. It does not install the extension or modify server configuration.
+
+The inventory shows job names, schedules, active / paused status, target database, execution role and command, plus the server's schedule timezone when visible. Select a job to edit its schedule and SQL using the existing SQL editor. **Review pause SQL**, **Review enable SQL** and **Review changes SQL** open `cron.alter_job` statements in a query tab; you execute them explicitly. Only changed fields are supplied, preserving the job's target database and run-as role. Read-only connections disable edits. Older extension versions without `cron.alter_job` remain browseable.
+
+The run-history section uses the latest 200 runs visible to your role and identifies when history is unavailable. PostgreSQL permissions and pg_cron's row security remain in effect. Pausing a job prevents future scheduled starts; it does not cancel an already running job. Refresh after executing changes. pg_cron validates schedule syntax, including supported second intervals and last-day `$` syntax.
+
+GitHub Actions schedules are separate: the daily nightly build is configured by the `schedule` entry in [release.yml](../.github/workflows/release.yml). Maintainers can disable or enable that workflow in GitHub's Actions page, or change its cron expression in a reviewed pull request. The client job screen manages PostgreSQL pg_cron metadata.
