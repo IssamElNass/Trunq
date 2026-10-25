@@ -37,7 +37,7 @@ Grab the latest build from the [**Releases page**](https://github.com/IssamElNas
 | Platform | File |
 |---|---|
 | macOS 11+ (Apple Silicon and Intel) | `Trunq-<version>-macos-universal.dmg`: open it and drag **Trunq** to Applications |
-| Windows 10/11 (x64) | `Trunq-<version>-windows-x86_64.zip`: unzip and run `Trunq.exe` |
+| Windows 10/11 (x64) | `Trunq-<version>-windows-x86_64.exe`: run directly, or use the `.zip` with README and license |
 | Debian / Ubuntu (x64) | `trunq_<version>_amd64.deb`: `sudo apt install ./trunq_<version>_amd64.deb` |
 | Other Linux (x64) | `trunq-<version>-linux-x86_64.tar.gz`: unpack and run `./trunq` |
 
@@ -53,6 +53,7 @@ Development snapshots are documented under [nightly builds](docs/install.md#nigh
 - **Diagnostics:** blocking sessions, live query progress, EXPLAIN plans, database health and migration warnings.
 - **Connections:** verified TLS/client certificates, SSH tunnels, Microsoft Entra ID, Azure service principals and cloud-neutral token helpers for AWS/Google/custom brokers.
 - **Administration:** searchable extension manager with version/schema/dependency choices, pg_cron templates and audit/security inspections.
+- **Permissions and jobs:** grants inventory, role membership traces, default privileges and reviewable pg_cron updates.
 - **Navigation:** command palette, object tree, table structure and ER diagrams.
 
 See the [feature reference and screenshots](docs/features.md), or follow the [user guide](docs/usage.md).

@@ -10,6 +10,8 @@ on:
       - ".github/workflows/release.yml"
       - "scripts/release-metadata.py"
       - "scripts/test_release_metadata.py"
+      - "scripts/release-downloads.py"
+      - "scripts/test_release_downloads.py"
       - "scripts/bundle-macos.sh"
   push:
     tags: ["v*"]
@@ -50,7 +52,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Test release routing
-        run: python3 -m unittest discover -s scripts -p test_release_metadata.py -v
+        run: python3 -m unittest discover -s scripts -p 'test_release_*.py' -v
       - name: Check out source to package
         uses: actions/checkout@v4
         with:
@@ -196,6 +198,7 @@ jobs:
           $name = "Trunq-${{ needs.meta.outputs.version }}-windows-x86_64"
           New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
           Copy-Item target/release/trunq.exe "dist/$name/Trunq.exe"
+          Copy-Item target/release/trunq.exe "dist/$name.exe"
           Copy-Item README.md, LICENSE "dist/$name/"
           Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
           Remove-Item -Recurse -Force "dist/$name"
@@ -215,6 +218,11 @@ jobs:
         with:
           ref: ${{ needs.meta.outputs.sha }}
           fetch-depth: 10
+      - name: Load current release tooling (also when rebuilding an older tag)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: release-tools
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -228,7 +236,8 @@ jobs:
             "Trunq-$VERSION-macos-universal.app.zip" \
             "trunq-$VERSION-linux-x86_64.tar.gz" \
             "trunq_$VERSION"_amd64.deb \
-            "Trunq-$VERSION-windows-x86_64.zip"; do
+            "Trunq-$VERSION-windows-x86_64.zip" \
+            "Trunq-$VERSION-windows-x86_64.exe"; do
             test -s "dist/$package"
           done
       - name: Snapshot provenance
@@ -256,17 +265,6 @@ jobs:
             found {print}
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then echo "Release $VERSION" > notes.md; fi
-          cat >> notes.md <<'EOF'
-
-          ### Downloads
-          | Platform | File |
-          |---|---|
-          | macOS (Apple Silicon & Intel) | `Trunq-*-macos-universal.dmg` |
-          | Linux (x86_64) | `trunq_*_amd64.deb` or `trunq-*-linux-x86_64.tar.gz` |
-          | Windows (x86_64) | `Trunq-*-windows-x86_64.zip` |
-
-          Verify downloads with `SHA256SUMS.txt`.
-          EOF
       - name: Nightly release notes
         if: needs.meta.outputs.nightly == 'true'
         env:
@@ -284,6 +282,13 @@ jobs:
             echo "Recent source changes:"
             git log -10 --format='- %h %s'
           } > notes.md
+      - name: Direct platform download links
+        env:
+          RELEASE_TAG: ${{ needs.meta.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          python3 release-tools/scripts/release-downloads.py --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --output notes.md
       - uses: actions/upload-artifact@v7
         with:
           name: release-bundle

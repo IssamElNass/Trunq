@@ -72,3 +72,20 @@ The regression suite also checks timestamp offsets, rejects NaN/Infinity coordin
 Protocol messages and retained diagnostics now have explicit [production resource limits](production.md#bound-resource-use-and-recover-cleanly). They reduce memory exhaustion from malformed frames or notice/notification floods; they do not cap all loaded rows or turn chart decimation into streaming storage. History startup streams only its retained window, and duplicate queries trigger disk compaction. SSH transport caches release their last handle when the final channel closes rather than accumulating idle authenticated sessions.
 
 ![Aggregated sample revenue chart](screenshots/chart-revenue.png)
+
+## 25 October 2026: grants inspector and query-path check
+
+The same Linux cloud environment, Rust 1.95 debug profile and loopback PostgreSQL 17 were used for these checks. They are development observations, with normal scheduling variance, rather than release-mode or cross-platform guarantees.
+
+| Workload | Observation |
+|---|---|
+| Existing million-row empty-filter benchmark at baseline `6957b54` | First scan 72.160 ms; 1,000 cached refreshes 0.627 ms total |
+| Same benchmark after the inspector changes | First scan 69.405 ms; 1,000 cached refreshes 0.626 ms total |
+| 100,000 grants, 100 actual headless inspector frames | 2.125 ms per cached frame on average |
+| Same grants with an unchanged empty search | 0.627 ms per cached frame on average |
+| Grant parsing, facets, counts and prepared search text | 276.426 ms once for the 100,000-row fixture; performed off the UI thread in the application |
+| Existing million-row / five-column fetch | 1.243 s; 804,347 rows/s; 113,978,440 bytes of retained cells and offsets |
+
+The query grid implementation did not change. These final measurements include the integration with `9bf1377` and ran after native screenshot capture finished to avoid concurrent software-rendering load. New inspectors fetch only when opened or explicitly refreshed, release their database connections after completion, and do not add recurring server polling. Grant facets and counts are prepared once; unchanged filters reuse their row indices, including empty results, and role routes are cached. Tables render only visible rows. Opening an inspector in a background tab still completes its snapshot and releases the connection.
+
+Reproduce the grant workload with `cargo test --locked bench_grants_virtualized_frames -- --ignored --nocapture`. The two existing benchmark commands above exercise the query grid and protocol fetch. The baseline was an archive of the recorded commit built with the same toolchain, not a different machine or release profile.

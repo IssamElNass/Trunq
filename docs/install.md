@@ -9,7 +9,7 @@ Grab the latest build from the [**Releases page**](https://github.com/IssamElNas
 | Platform | File |
 |---|---|
 | macOS 11+ (Apple Silicon and Intel) | `Trunq-<version>-macos-universal.dmg`: open it and drag **Trunq** to Applications |
-| Windows 10/11 (x64) | `Trunq-<version>-windows-x86_64.zip`: unzip and run `Trunq.exe` |
+| Windows 10/11 (x64) | `Trunq-<version>-windows-x86_64.exe`: run directly, or use the `.zip` with README and license |
 | Debian / Ubuntu (x64) | `trunq_<version>_amd64.deb`: `sudo apt install ./trunq_<version>_amd64.deb` |
 | Other Linux (x64) | `trunq-<version>-linux-x86_64.tar.gz`: unpack and run `./trunq` |
 
@@ -20,6 +20,8 @@ Every release lists SHA-256 checksums in `SHA256SUMS.txt`. Prefer to build it yo
 Nightlies are development snapshots of the latest default-branch commit. Once the updated Release workflow is on the default branch, GitHub Actions builds them daily at 02:00 UTC (03:00 in Paris in winter, 04:00 in summer). GitHub can delay scheduled runs. Maintainers can also choose **Actions → Release → Run workflow** and enter `nightly` as the tag input.
 
 Find snapshots in [nightly prereleases](https://github.com/IssamElNass/Trunq/releases?q=nightly&expanded=true). They do not replace the latest stable release or its download buttons. Every successful run creates its own tag, for example `nightly-20261024-17-gabcdef0`, containing the UTC date, workflow run number and source commit prefix.
+
+Each release has a **Downloads** table with direct links to the portable Windows `.exe`, Windows `.zip`, universal macOS `.dmg` / `.app.zip`, and Linux `.deb` / `.tar.gz`. These are release assets; downloading does not require opening an Actions artifact. Checksums cover the standalone `.exe` too. Updates use these downloads: close Trunq, replace the application and reopen it. There is no automatic in-app updater.
 
 | Platform | Nightly asset |
 |---|---|

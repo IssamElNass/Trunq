@@ -1186,6 +1186,129 @@ mod live_tests {
         });
     }
 
+    #[test]
+    fn grants_inventory_and_extension_metadata() {
+        let Some(p) = params() else { return };
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.unwrap();
+            // Everything, including cluster role fixtures, rolls back on disconnect.
+            c.simple_query(
+                r#"
+BEGIN;
+CREATE ROLE trunq_acl_readers;
+CREATE ROLE trunq_acl_team;
+CREATE ROLE trunq_acl_login;
+CREATE ROLE trunq_acl_manual NOINHERIT;
+GRANT trunq_acl_readers TO trunq_acl_team;
+GRANT trunq_acl_team TO trunq_acl_login;
+GRANT trunq_acl_readers TO trunq_acl_manual;
+CREATE SCHEMA trunq_acl;
+CREATE TABLE trunq_acl."dotted.table" ("quoted""column" int);
+CREATE TABLE trunq_acl.secret (id int);
+CREATE VIEW trunq_acl.visible AS SELECT * FROM trunq_acl."dotted.table";
+CREATE MATERIALIZED VIEW trunq_acl.cached AS SELECT 1 AS n;
+CREATE SEQUENCE trunq_acl.counter;
+CREATE TYPE trunq_acl.state AS ENUM ('ready');
+CREATE TYPE trunq_acl.address AS (street text);
+CREATE FUNCTION trunq_acl.read_value(i integer) RETURNS integer LANGUAGE sql AS 'SELECT i';
+CREATE PROCEDURE trunq_acl.do_work() LANGUAGE sql AS 'SELECT 1';
+ALTER TABLE trunq_acl."dotted.table" ENABLE ROW LEVEL SECURITY;
+GRANT USAGE ON SCHEMA trunq_acl TO trunq_acl_readers;
+GRANT SELECT ON trunq_acl."dotted.table" TO trunq_acl_readers WITH GRANT OPTION;
+GRANT SELECT ("quoted""column") ON trunq_acl."dotted.table" TO trunq_acl_login;
+GRANT SELECT ON trunq_acl.visible TO PUBLIC;
+GRANT USAGE ON SEQUENCE trunq_acl.counter TO trunq_acl_readers;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trunq_acl GRANT SELECT ON TABLES TO trunq_acl_readers;
+SET ROLE trunq_acl_readers;
+GRANT SELECT ON trunq_acl."dotted.table" TO trunq_acl_login;
+RESET ROLE;
+"#,
+            )
+            .await
+            .unwrap();
+            let sets = c.simple_query(crate::db::grants::SQL).await.expect("ACL query");
+            let inventory = crate::db::grants::Inventory::parse(&sets).unwrap();
+            let fixtures: Vec<_> = inventory.grants.iter().filter(|g| g.schema == "trunq_acl").collect();
+            for kind in ["Table", "View", "Materialized view", "Sequence", "Column", "Function", "Procedure", "Type", "Schema"] {
+                assert!(fixtures.iter().any(|g| g.kind == kind), "missing {kind}");
+            }
+            assert!(fixtures.iter().any(|g| g.name == "visible" && g.public && g.privilege == "SELECT"));
+            assert!(fixtures.iter().any(|g| g.kind == "Table" && g.name == "dotted.table" && g.grantable && g.rls));
+            assert!(fixtures.iter().any(|g| g.grantee == "trunq_acl_login" && g.grantor == "trunq_acl_readers"));
+            assert!(fixtures.iter().any(|g| g.future && g.grantee == "trunq_acl_readers"));
+            assert!(fixtures.iter().any(|g| g.name == "secret" && g.builtin));
+            assert!(fixtures.iter().any(|g| g.kind == "Type" && g.name == "address"));
+            assert_eq!(inventory.routes("trunq_acl_login")["trunq_acl_readers"].roles, ["trunq_acl_login", "trunq_acl_team", "trunq_acl_readers"]);
+            assert!(!inventory.routes("trunq_acl_manual")["trunq_acl_readers"].inherited);
+            // Recreate and revoke every fixture ACL as real SQL, including quoted
+            // columns, routine signatures and future-object rules. Savepoints keep
+            // each check independent, including grants with dependent recipients.
+            for g in &fixtures {
+                c.simple_query("SAVEPOINT acl_preview").await.unwrap();
+                c.simple_query(&g.sql(false)).await.unwrap_or_else(|e| panic!("{}: {e}", g.sql(false)));
+                if g.grantor != "trunq_acl_readers" && g.grantee != "trunq_acl_readers" {
+                    c.simple_query(&g.sql(true)).await.unwrap_or_else(|e| panic!("{}: {e}", g.sql(true)));
+                }
+                c.simple_query("ROLLBACK TO acl_preview; RELEASE acl_preview").await.unwrap();
+            }
+            // A restricted reader still sees ACLs absent from information_schema.
+            c.simple_query("SET ROLE trunq_acl_login").await.unwrap();
+            let restricted = c.simple_query(crate::db::grants::SQL).await.unwrap();
+            let restricted = crate::db::grants::Inventory::parse(&restricted).unwrap();
+            assert!(restricted.grants.iter().any(|g| g.schema == "trunq_acl" && g.name == "secret"));
+            c.simple_query("RESET ROLE").await.unwrap();
+            let exts = c.simple_query(crate::ui::extensions::INVENTORY_SQL).await.expect("extension query");
+            assert_eq!(exts.len(), 4);
+            assert!(exts[0].rows().any(|r| exts[0].s(r, 0) == "plpgsql" && !exts[0].s(r, 2).is_empty()));
+            assert!(exts[1].rows().any(|r| exts[1].s(r, 0) == "plpgsql"));
+            c.simple_query("ROLLBACK").await.unwrap();
+        });
+    }
+
+    #[test]
+    fn pg_cron_previews_are_scoped_and_respect_rls() {
+        let Ok(url) = std::env::var("TRUNQ_TEST_CRON_DATABASE_URL") else {
+            return;
+        };
+        let (profile, password) = crate::config::Profile::from_url(&url).expect("cron test URL");
+        let p = profile.connect_params("", password.as_deref()).unwrap();
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.unwrap();
+            c.simple_query("BEGIN; CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE ROLE trunq_cron_reader;").await.unwrap();
+            let meta = c.simple_query(crate::tabs::cron::DETECT_SQL).await.unwrap();
+            assert!(!meta[0].s(0, 0).is_empty());
+            assert_eq!(meta[0].s(0, 3), "t");
+            assert_eq!(meta[0].s(0, 4), "t");
+            let first = c.simple_query("SELECT cron.schedule('trunq-test-first','0 2 * * *','SELECT 1')").await.unwrap()[0].s(0, 0).parse::<i64>().unwrap();
+            let second = c.simple_query("SELECT cron.schedule('trunq-test-second','0 3 * * *','SELECT 2')").await.unwrap()[0].s(0, 0).parse::<i64>().unwrap();
+            // Never commit an active fixture: the scheduler cannot observe these jobs.
+            c.simple_query(&crate::tabs::cron::alter_sql(first, None, None, Some(false))).await.unwrap();
+            c.simple_query(&crate::tabs::cron::alter_sql(second, None, None, Some(false))).await.unwrap();
+            let command = "SELECT 'quoted''value', E'back\\\\slash'; -- $trunq$";
+            c.simple_query(&crate::tabs::cron::alter_sql(first, Some("15 4 * * *"), Some(command), Some(true))).await.unwrap();
+            let jobs = c.simple_query(crate::tabs::cron::JOBS_SQL).await.unwrap();
+            let rs = &jobs[0];
+            let a = rs.rows().find(|&r| rs.s(r, 0) == first.to_string()).unwrap();
+            let b = rs.rows().find(|&r| rs.s(r, 0) == second.to_string()).unwrap();
+            assert_eq!(rs.s(a, 2), "15 4 * * *");
+            assert_eq!(rs.s(a, 6), command);
+            assert_eq!(rs.s(a, 5), "t");
+            assert_eq!(rs.s(b, 2), "0 3 * * *");
+            assert_eq!(rs.s(b, 6), "SELECT 2");
+            assert_eq!(rs.s(b, 5), "f");
+            c.simple_query(&crate::tabs::cron::alter_sql(first, None, None, Some(false))).await.unwrap();
+            let history = c.simple_query(crate::tabs::cron::HISTORY_SQL).await.unwrap();
+            assert_eq!(history.len(), 1);
+            c.simple_query("SET ROLE trunq_cron_reader").await.unwrap();
+            let no_schema_access = c.simple_query(crate::tabs::cron::DETECT_SQL).await.unwrap();
+            assert_eq!(no_schema_access[0].s(0, 3), "f");
+            c.simple_query("RESET ROLE; GRANT USAGE ON SCHEMA cron TO trunq_cron_reader; SET ROLE trunq_cron_reader").await.unwrap();
+            let restricted = c.simple_query(crate::tabs::cron::JOBS_SQL).await.unwrap();
+            assert!(!restricted[0].rows().any(|r| restricted[0].s(r, 0) == first.to_string()));
+            c.simple_query("RESET ROLE; ROLLBACK").await.unwrap();
+        });
+    }
+
     /// `cargo test --release bench_fetch_million -- --ignored --nocapture`
     #[test]
     #[ignore]

@@ -329,16 +329,8 @@ impl ExtensionDialog {
                     for row in range {
                         let index = visible[row];
                         let extension = &self.inventory.extensions[index];
-                        let label = format!(
-                            "{}\n{}",
-                            extension.name,
-                            extension.installed_version.as_ref().map(|v| format!("Installed · {v}")).unwrap_or_else(|| "Available to enable".into())
-                        );
-                        if ui
-                            .add_sized([ui.available_width(), 50.0], egui::Button::selectable(self.selected.as_deref() == Some(&extension.name), label))
-                            .clicked()
-                            && !busy
-                        {
+                        let detail = extension.installed_version.as_ref().map(|v| format!("Installed · {v}")).unwrap_or_else(|| "Available to enable".into());
+                        if w::list_item(ui, self.selected.as_deref() == Some(&extension.name), icon::PLUG, &extension.name, &detail).clicked() && !busy {
                             chosen = Some(index);
                         }
                     }
