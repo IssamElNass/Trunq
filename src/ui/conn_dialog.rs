@@ -389,10 +389,14 @@ impl ConnDialog {
         self.clear_stale_secrets();
         match &mut self.profile.auth {
             AuthMethod::Password => {
-                let hint = if !self.is_new && !self.password_dirty { "Unchanged" } else { "" };
+                let hint = if !self.is_new && !self.password_dirty { "Keychain / pgpass if available" } else { "" };
                 w::form_row(ui, "Password", |ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    if w::password_input(ui, &mut self.password, hint, ui.available_width() - 150.0).changed() {
+                    let changed = ui
+                        .push_id(self.profile.credential_target(), |ui| w::password_input(ui, &mut self.password, hint, ui.available_width() - 150.0))
+                        .inner
+                        .changed();
+                    if changed {
                         self.password_dirty = true;
                         self.password_target = self.profile.credential_target();
                     }
@@ -499,7 +503,13 @@ impl ConnDialog {
                             }
                         });
                         w::form_row(ui, "Passphrase", |ui| {
-                            if w::password_input(ui, &mut self.ssh_secret, "Only if the key is encrypted", 0.0).changed() {
+                            let changed = ui
+                                .push_id(self.profile.ssh_credential_target(), |ui| {
+                                    w::password_input(ui, &mut self.ssh_secret, "Only if the key is encrypted", 0.0)
+                                })
+                                .inner
+                                .changed();
+                            if changed {
                                 self.ssh_secret_dirty = true;
                                 self.ssh_secret_target = self.profile.ssh_credential_target();
                             }
@@ -507,7 +517,9 @@ impl ConnDialog {
                     }
                     crate::db::ssh::SshAuth::Password => {
                         w::form_row(ui, "SSH password", |ui| {
-                            if w::password_input(ui, &mut self.ssh_secret, "", 0.0).changed() {
+                            let changed =
+                                ui.push_id(self.profile.ssh_credential_target(), |ui| w::password_input(ui, &mut self.ssh_secret, "", 0.0)).inner.changed();
+                            if changed {
                                 self.ssh_secret_dirty = true;
                                 self.ssh_secret_target = self.profile.ssh_credential_target();
                             }
