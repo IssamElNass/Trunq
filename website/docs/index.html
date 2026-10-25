@@ -94,7 +94,7 @@
         <a href="#charts">Charts</a>
         <a href="#import">Importing CSV files</a>
         <a href="#relationships">ER diagrams &amp; metadata</a>
-        <a href="#administration">Extensions, jobs &amp; audits</a>
+        <a href="#administration">Grants, extensions, jobs &amp; audits</a>
         <a href="#docker">Docker &amp; Docker Hub</a>
         <a href="#performance">Performance</a>
         <a href="#navigation">Finding your way around</a>
@@ -382,8 +382,12 @@ ORDER BY status;</code></pre></div>
     </section>
 
     <section>
-      <h2 id="administration">Extensions, scheduled jobs &amp; audits</h2>
+      <h2 id="administration">Grants, extensions, scheduled jobs &amp; audits</h2>
       <p>Right-click a database → <b>Database tools</b>, or search the command palette. Tools open editable SQL for review. The database tree now shows installed extensions, event triggers and publications; schema types are searchable.</p>
+      <h3 id="grant-access">Inspect grants and trace access</h3>
+      <p>Open <b>Grants &amp; access</b> under a database, from its context menu or the command palette. Filter by role, schema, object type, PUBLIC access and grant option. Select a row to inspect its owner, grantor and membership path; NO INHERIT paths are marked separately. Default privileges for future objects have their own view.</p>
+      <p>The <b>Privilege</b> column lists each concrete right: <code>SELECT</code> reads, <code>INSERT</code> adds rows, <code>UPDATE</code> changes rows and <code>DELETE</code> removes rows. Other rights include <code>USAGE</code>, <code>CREATE</code>, <code>EXECUTE</code> and database <code>CONNECT</code>, depending on the object type.</p>
+      <p><code>GRANT ALL</code> expands into the individual rights available for that object and server version. <b>WITH GRANT OPTION</b> allows passing a right onward and is separate from ALL. Search for a right such as SELECT or INSERT to narrow the list. The view is an ACL snapshot, not a historical audit or a complete effective-access calculation; ownership, RLS and other prerequisites still matter. Copy GRANT SQL or open REVOKE SQL for review; browsing does not execute changes.</p>
       <h3 id="extension-management">Inspect and add extensions</h3>
       <p>Right-click a database → <b>Manage extensions…</b>. Search all server-provided extensions by name or description, filter installed/available entries and select an extension. Choose a version and schema, review the displayed SQL, then click <b>Enable extension</b> or <b>Update to selected version</b>. The dependency option is explicit, read-only/recovery connections disable changes, and the manager/browser refresh after success.</p>
       <figure class="doc__shot"><img src="../assets/shots/extensions.webp" alt="Extension manager showing hstore version and SQL preview" width="1440" height="1000" loading="lazy"><figcaption>Real server-provided inventory from the disposable PostgreSQL sample server.</figcaption></figure>
@@ -392,7 +396,8 @@ ORDER BY status;</code></pre></div>
       <p>The <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/extensions.md">extension quick start</a> explains the complete flow and common errors. The separate SQL inventory lists versions, owners, schemas, dependencies and trusted/superuser requirements. An installed extension's context menu opens versions and an update template. Check the correct database, privileges, provider allowlist and preload/restart requirements before execution, then refresh schema.</p>
       <p>Server binaries and provider flags are operational prerequisites. Azure uses extension allowlisting and preload settings; RDS uses parameter groups; Cloud SQL uses supported extension flags. Preserve existing settings when editing lists. Trunq does not install server packages or restart instances.</p>
       <h3 id="pg-cron">Manage pg_cron jobs</h3>
-      <p>After server setup, templates cover extension installation, named scheduling, pausing and removing a job. Schedule, name and SQL command are bound values. The inspection query shows visible jobs and the most recent 200 runs; permissions/RLS and run-history recording affect what appears. Jobs run on the server after Trunq closes, using server timezone and privileges. Pausing/removing a schedule does not undo completed work.</p>
+      <p>Open <b>Cron jobs</b> under a database to inspect schedules, active/paused status, commands and recent runs. Select a job to edit its schedule and SQL in the native editor. Pause, enable and update actions open <code>cron.alter_job</code> statements for review; execute the SQL yourself and refresh afterward. Read-only connections disable edits. Your role's permissions and pg_cron row security remain in effect, and the schedule timezone is shown when visible. Pausing does not cancel an already running job.</p>
+      <p>After server setup, Database tools templates also cover extension installation, named scheduling, pausing and removing a job. Schedule, name and SQL command are bound values. The inspection query shows visible jobs and the most recent 200 runs; permissions/RLS and run-history recording affect what appears. Jobs run on the server after Trunq closes, using server timezone and privileges. Pausing/removing a schedule does not undo completed work.</p>
       <h3 id="audit-inspection">Inspect audit configuration and security</h3>
       <p>Audit tools report visible logging/pgAudit settings, current identity, roles/memberships, table RLS flags, schema ACLs and default ACLs. Foreign-server and replication inspections omit stored options and connection strings that may contain credentials. These are point-in-time inspections, not complete effective-privilege analysis or a durable audit trail.</p>
       <p>pgAudit requires server setup, audit-class configuration and durable log collection. Local query history is editable and clearable. Configure database and cloud control-plane logs, retention and access separately; this update does not ingest provider logs. The <a href="https://github.com/IssamElNass/Trunq/blob/main/docs/administration.md">administration guide</a> includes provider sources, practical examples and the remaining catalog/editor gaps.</p>

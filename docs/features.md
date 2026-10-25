@@ -182,6 +182,20 @@ Open **Grants & access** under a database in the sidebar, its context menu or th
 - **Default privileges** lists future-object ACL rules separately from existing-object grants and built-in ACL defaults. Global and per-schema rules combine.
 - Copy a GRANT statement or open a REVOKE statement for review. Changes run only when you execute the SQL yourself. REVOKE does not add CASCADE. RLS-enabled objects link to their policies.
 
+The **Privilege** column shows the exact PostgreSQL right, one per row:
+
+| Privilege | Meaning |
+|---|---|
+| `SELECT` | Read rows or values |
+| `INSERT`, `UPDATE`, `DELETE` | Add, change or remove rows |
+| `TRUNCATE`, `REFERENCES`, `TRIGGER` | Empty a table, reference it with a foreign key, or create triggers |
+| `USAGE`, `CREATE` | Use or create objects, depending on the selected object type |
+| `EXECUTE` | Call a function or procedure |
+| `CONNECT`, `TEMPORARY` | Connect to a database or create temporary objects |
+| `MAINTAIN` | Table maintenance on PostgreSQL versions that support this privilege |
+
+`GRANT ALL` is stored by PostgreSQL as the individual privileges available for that object type and server version. The inspector expands them into their concrete rows; it cannot tell whether they originally came from one ALL statement or several individual GRANT statements. **WITH GRANT OPTION** means the recipient can grant that privilege onward; it does not mean ALL. Use the search box for a privilege such as `SELECT` or `INSERT`, and select the role/object to inspect its scope and source.
+
 This is a refreshable snapshot of the selected database, with shared tablespace ACLs and cluster role memberships. It does not record historical changes or claim complete effective authorization: schema USAGE, database CONNECT, RLS, object ownership, superuser privileges and predefined roles also affect access. Owners retain implicit management rights even when their ordinary ACL privileges have been revoked. Inspect each database separately.
 
 ### Extension UI

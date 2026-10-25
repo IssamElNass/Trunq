@@ -113,6 +113,7 @@ Linux, Rust 1.95, PostgreSQL 17, plus a separate disposable PostgreSQL 17 server
 | Build, rustfmt and Clippy with warnings denied | Passed |
 | Full suite with database and pg_cron fixtures | 109 passed, 0 failed; four opt-in benchmarks also run separately and passed |
 | Release metadata / direct download links | Six Python checks passed; actionlint 1.7.12 passed |
+| Documentation and public handbook | 279 local links/images and 13 browser checks passed; the privilege reference explains SELECT/read, write rights, ALL expansion and grant option; pg_cron instructions match the new UI |
 | Grants integration | Tables, views, materialized views, columns, sequences, routines, enum/composite types, schemas, original grantor, PUBLIC, grant options, RLS and future defaults checked; generated GRANT / REVOKE statements executed in savepoints |
 | Role tracing and restricted readers | Nested role paths, NO INHERIT and membership cycles checked; restricted readers can inspect catalog ACLs omitted by information_schema |
 | pg_cron integration | Pause / enable / schedule / command changes affect the selected job only; quoting round trips; restricted settings and missing schema privileges do not break detection; row security hides other roles' jobs |
