@@ -593,12 +593,18 @@ impl QueryTab {
                 if let Some(f) = pane.fetch_ms.filter(|f| *f >= 0.05) {
                     timing.push(format!("fetch {}", ms(f)));
                 }
-                timing.push(format!("render {}", ms(pane.grid.render_ms)));
-                if compact {
-                    count.on_hover_text(timing.join(" · "));
-                } else {
+                // Render time changes every frame. Keep it in the tooltip so it
+                // cannot reflow the controls or change the grid's viewport.
+                let mut details = timing.clone();
+                details.push(format!("render {}", ms(pane.grid.render_ms)));
+                let details = format!(
+                    "{}\n\nquery: until the server returned the first rows (planning + execution)\nfetch: transferring the remaining rows\nrender: drawing the last frame of this grid",
+                    details.join(" · ")
+                );
+                count.on_hover_text(&details);
+                if !compact && !timing.is_empty() {
                     ui.label(RichText::new(format!("· {}", timing.join(" · "))).small().color(pal.faint)).on_hover_text(
-                        "query: until the server returned the first rows (planning + execution)\nfetch: transferring the remaining rows\nrender: drawing the last frame of this grid",
+                        &details,
                     );
                 }
                 ui.label(RichText::new(format!("· {}", util::bytes(pane.rs.byte_size()))).small().color(pal.faint));
@@ -1025,4 +1031,83 @@ fn card_view(ui: &mut Ui, pane: &mut Pane, ts_mode: TsMode, keys: bool) -> Optio
         pane.grid.focus_row(row);
     }
     action
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_render_timing_does_not_reflow_the_result_footer() {
+        let mut tab = QueryTab::new(None, "postgres", String::new(), 13.5);
+        tab.panes.push(Pane {
+            title: String::new(),
+            sql: String::new(),
+            rs: ResultSet::default(),
+            cats: Vec::new(),
+            type_names: Vec::new(),
+            grid: GridState::default(),
+            more: true,
+            fetching: false,
+            tag: None,
+            elapsed: Duration::ZERO,
+            plan: None,
+            show_plan_raw: false,
+            fks: Vec::new(),
+            chart: None,
+            pinned: false,
+            card: false,
+            exec_ms: Some(12.0),
+            fetch_ms: Some(1.2),
+            params: Vec::new(),
+        });
+        let settings = Settings::default();
+        let mut actions = Vec::new();
+        let mut history = crate::config::History::default();
+        let mut ctx = TabCtx {
+            settings: &settings,
+            profiles: &[],
+            catalog: None,
+            actions: &mut actions,
+            history: &mut history,
+            passwords: &HashMap::new(),
+            monitor: None,
+            meta: None,
+            table_prefs: &HashMap::new(),
+            snippets: &[],
+        };
+        for width in [480.0, 699.0, 700.0, 850.0, 1000.0, 1440.0] {
+            let context = egui::Context::default();
+            theme::install_fonts(&context);
+            let mut baseline = None;
+            for render_ms in [0.01, 0.99, 1.0, 99.0, 999.0, 1000.0, 123_456.0] {
+                tab.panes[0].grid.render_ms = render_ms;
+                let mut bounds = egui::Rect::NOTHING;
+                let mut output = context.run_ui(
+                    egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 200.0))), ..Default::default() },
+                    |ui| {
+                        tab.footer(ui, &mut ctx, 0);
+                        bounds = ui.min_rect();
+                    },
+                );
+                let labels: Vec<_> = output
+                    .shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) => Some((text.galley.job.text.clone(), text.pos, text.galley.size())),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(labels.iter().any(|(text, _, _)| text == "Load all"));
+                assert!(labels.iter().any(|(text, _, _)| text == "Stop loading"));
+                let layout = (bounds, labels);
+                if let Some(baseline) = &baseline {
+                    assert_eq!(&layout, baseline, "footer moved at {width}px with {render_ms}ms render time");
+                } else {
+                    baseline = Some(layout);
+                }
+                output.textures_delta.clear();
+            }
+        }
+    }
 }

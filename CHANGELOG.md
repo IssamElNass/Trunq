@@ -11,6 +11,7 @@ All notable changes to Trunq are documented here. The format follows
 - Complete every paged fetch so repeated scrolling, Load more and Load all do not leave query tabs stuck busy. Closing a cursor keeps loaded rows and releases its implicit transaction while preserving manual transactions.
 - Keep environment badges visible in the sidebar, query tabs and connection selector, including when multiple profiles share a database name. Production stays red independently of the custom profile colour; unlabelled profiles show UNSET.
 - Truncate long connection, object and menu names with full text on hover, reserve status-bar controls, and wrap environment choices in the connection dialog.
+- Keep the results footer steady by showing live render timing in the row-count tooltip instead of the wrapping control row.
 
 ### Changed
 - Redesign Grants & access around grouped object/recipient permissions, a plain-language detail pane and explicit direct, inherited, PUBLIC and non-inherited membership labels. Use a neutral outlined selection with an accent marker, compact filters and readable membership options; keep SQL actions scoped to one selected grant.

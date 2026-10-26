@@ -148,3 +148,10 @@ The grants view was exercised against the same disposable PostgreSQL 17.10 TLS/S
 - Documentation links and the browser handbook checks passed. SQL actions retain their existing single-grant scope; grouping does not submit permission changes.
 
 Screenshots: [grouped permissions and neutral selection](screenshots/grants-dark.png), [light theme](screenshots/grants-light.png), [overview](screenshots/grants-overview.png), [default rules](screenshots/grants-defaults.png), [membership options](screenshots/grants-memberships.png), and [compact layout](screenshots/grants-compact.png). Names and endpoints belong to the disposable fixture.
+
+## 26 October 2026 — steady results footer
+
+Live render timing now appears in the row-count tooltip, keeping the wrapping footer controls independent of frame-to-frame render measurements. A regression renders the actual footer at six widths from 480 to 1,440 pixels and varies render time from 0.01 to 123,456 ms; all visible label positions and footer bounds remain identical.
+
+- Full locked suite against the disposable PostgreSQL 17.10 TLS/SCRAM fixture: **123 passed, 4 ignored benchmarks**. External-provider tests still require their own fixtures.
+- Formatting, Clippy with warnings denied, documentation links and `git diff --check` passed.

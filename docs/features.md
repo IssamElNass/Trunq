@@ -25,7 +25,7 @@
 - **Column tools**: show and hide columns, **Hide empty columns** (only NULL in the loaded rows), and a **Column finder** (⌘F) that jumps to any column, even in a table with 80 of them.
 - **Instant aggregates**: select cells to see COUNT, SUM, AVG, MIN and MAX in the footer.
 - **Timestamp switch**: show `timestamptz` values raw, in local time or in UTC.
-- **Query timing breakdown**: query time, fetch time and render time are shown separately for every result.
+- **Query timing breakdown**: query and fetch times appear in the result footer. Hover the row count for the full breakdown, including live render time; render updates do not move the footer controls.
 - Local sorting with natural ordering ("file2" before "file10") and precision-preserving numeric comparisons.
 
 ### Look closer at your data
@@ -152,7 +152,7 @@ Example profile only; live provider prerequisites are documented in the cloud gu
 - **Never blocks the UI**: every network call runs on a background runtime. The interface keeps drawing even while a query waits on a lock.
 - **Stable scrolling**: hard grid boundaries prevent elastic trackpad scrolling from reversing at page edges, while sticky headers and keyboard navigation keep the same scroll position.
 - **Cached search and aggregates**: empty search results stay cached; sorting, filtering, hide-empty columns and selection aggregates track edits and replacement results. Selected-cell aggregates are calculated once per change.
-- **Measured**: every result shows its query, fetch and render time, so you can see where the milliseconds go.
+- **Measured**: every result has a query, fetch and render timing breakdown; hover the row count for all three.
 
 ### Explore relationships and database metadata
 
