@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Trunq</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Trunq home"><img src="/favicon.png" alt="" width="29" height="29">trunq<span>POSTGRESQL</span></a>
+    <div class="connection-controls">
+      <select id="connections" aria-label="Saved connection"><option value="">Choose a connection…</option></select>
+      <button id="new-connection">+ Connection</button>
+      <button id="edit-connection" title="Edit selected connection">Edit</button>
+      <button id="disconnect" disabled>Disconnect</button>
+    </div>
+    <button id="theme" class="theme-button" aria-label="Toggle light and dark theme">◐</button>
+  </header>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-heading"><h2>Explorer</h2><button id="refresh" title="Refresh schemas" disabled aria-label="Refresh schemas">↻</button></div>
+      <div id="identity">No database connected</div>
+      <input id="object-filter" type="search" placeholder="Filter tables…" aria-label="Filter database objects">
+      <nav id="catalog" aria-label="Database objects"><p class="hint">Connect to PostgreSQL to browse schemas, tables and views.</p></nav>
+      <div class="sidebar-foot">Trunq for your browser</div>
+    </aside>
+    <main>
+      <div class="tabbar"><div id="tabs" role="tablist" aria-label="SQL queries"></div><button id="new-tab" aria-label="New query tab" title="New query">+</button></div>
+      <div class="query-toolbar">
+        <button id="run" class="primary" disabled>▶ Run SQL</button>
+        <button id="cancel" disabled>■ Cancel</button>
+        <button id="format">Format</button>
+        <button id="open-sql">Open SQL</button>
+        <button id="save-sql">Save SQL</button>
+        <span class="toolbar-spacer"></span>
+        <label class="history-label">History <select id="history" aria-label="Query history"><option value="">Recent queries…</option></select></label>
+        <span class="shortcut">Ctrl/⌘ ↵</span>
+      </div>
+      <label class="sr-only" for="editor">SQL editor</label>
+      <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="SELECT * FROM your_table;" aria-describedby="editor-help"></textarea>
+      <div id="editor-help" class="editor-foot"><span>PostgreSQL · Run selected text or the entire script</span><span>500 rows per page</span></div>
+      <div class="results-toolbar"><div id="result-tabs" aria-label="Statement results"></div><span class="toolbar-spacer"></span><input id="result-filter" type="search" placeholder="Search loaded rows…" aria-label="Search loaded rows"><button id="csv" title="Download all loaded rows as CSV" disabled>↓ CSV</button><button id="json" title="Download all loaded rows as JSON" disabled>↓ JSON</button></div>
+      <div id="results" tabindex="0"><div class="empty-state"><div class="empty-icon">⌘</div><h1>Your database, a little closer.</h1><p>Add a connection, explore a table, or write your first query.</p><button id="welcome-connect" class="primary">Add a connection</button></div></div>
+      <div class="results-foot"><span id="result-summary" role="status">Ready</span><button id="fetch" hidden>Load next 500 rows</button></div>
+    </main>
+  </div>
+  <footer class="statusbar"><span id="status" role="status">Starting…</span><span id="transaction"></span><span id="server-version"></span></footer>
+  <div id="notification" role="alert" hidden></div>
+  <dialog id="connection-dialog" aria-labelledby="dialog-title">
+    <form id="connection-form">
+      <div class="dialog-heading"><h2 id="dialog-title">Connect to PostgreSQL</h2><button type="button" id="close-dialog" aria-label="Close connection dialog">✕</button></div>
+      <label>Name<input name="name" placeholder="My database" maxlength="1024"></label>
+      <div class="form-row host-row"><label>Host<input name="host" required value="host.docker.internal" maxlength="1024"></label><label>Port<input name="port" type="number" min="1" max="65535" required value="5432"></label></div>
+      <div class="form-row"><label>Database<input name="database" required value="postgres" maxlength="1024"></label><label>User<input name="user" required value="postgres" maxlength="1024" autocomplete="username"></label></div>
+      <label>Password<input name="password" type="password" autocomplete="current-password" placeholder="Used for this session only"></label>
+      <div class="form-row"><label>TLS mode<select name="ssl_mode"><option value="Prefer">prefer</option><option value="Disable">disable</option><option value="Require">require</option><option value="VerifyCa">verify-ca</option><option value="VerifyFull">verify-full</option></select></label><label>Environment<select name="environment"><option>None</option><option>Local</option><option>Development</option><option>Test</option><option>Staging</option><option>Production</option></select></label></div>
+      <details><summary>Certificate paths in the container</summary><label>Root CA (PEM)<input name="root_ca" placeholder="/certs/ca.pem"></label><label>Client certificate (PEM)<input name="client_cert" placeholder="/certs/client.pem"></label><label>Client key (PKCS #8)<input name="client_key" placeholder="/certs/client.key"></label></details>
+      <label class="check"><input type="checkbox" name="read_only"> Start in read-only mode</label>
+      <label class="check"><input type="checkbox" name="save" checked> Save connection details</label>
+      <p class="hint">Passwords stay in server memory for this connection. Use host.docker.internal for PostgreSQL on your host.</p>
+      <p id="connection-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" id="delete-connection" class="danger" hidden>Delete saved connection</button><span class="toolbar-spacer"></span><button type="submit" class="primary" id="connect-submit">Connect</button></div>
+    </form>
+  </dialog>
+  <input id="sql-file" type="file" accept=".sql,.txt" hidden>
+</body>
+</html>

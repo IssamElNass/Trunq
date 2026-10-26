@@ -1,21 +1,44 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(feature = "desktop"), allow(dead_code))]
 
+#[cfg(feature = "desktop")]
 mod action;
+#[cfg(feature = "desktop")]
 mod app;
 mod config;
 mod db;
+#[cfg(feature = "desktop")]
 mod devscript;
 mod export;
 mod sql;
 mod storage;
+#[cfg(feature = "desktop")]
 mod tabs;
+#[cfg(feature = "desktop")]
 mod ui;
 mod util;
+#[cfg(feature = "web")]
+mod web;
+
+#[cfg(not(any(feature = "desktop", feature = "web")))]
+compile_error!("Enable the desktop or web feature");
 
 /// Process start, for `TRUNQ_BENCH=startup` (time to first frame).
 pub static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
-fn main() -> eframe::Result {
+fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "web")]
+    if !cfg!(feature = "desktop") || std::env::args().any(|arg| arg == "--web") {
+        return web::run();
+    }
+    #[cfg(feature = "desktop")]
+    return desktop_main().map_err(|e| anyhow::anyhow!(e.to_string()));
+    #[cfg(not(feature = "desktop"))]
+    unreachable!()
+}
+
+#[cfg(feature = "desktop")]
+fn desktop_main() -> eframe::Result {
     STARTED.get_or_init(std::time::Instant::now);
     // macOS expects a rounded-square app icon; other platforms use the plain mark.
     let icon_png: &[u8] = if cfg!(target_os = "macos") { include_bytes!("../assets/app_icon_256.png") } else { include_bytes!("../assets/logo_256.png") };

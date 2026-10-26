@@ -99,11 +99,11 @@ Passwords are saved in your operating system keychain. Trunq also understands `~
 ```sh
 docker pull ghcr.io/issamelnass/trunq:dev
 docker run -d --name trunq \
-  -p 127.0.0.1:8080:8080 --shm-size=256m \
+  -p 127.0.0.1:8080:8080 \
   -v trunq-data:/data ghcr.io/issamelnass/trunq:dev
 ```
 
-Open [the local desktop](http://localhost:8080/vnc.html?autoconnect=true&resize=scale). The command binds to loopback and persists settings in a named volume. The publishing workflow builds Linux amd64 and arm64 images after a successful smoke test.
+Open [Trunq in your browser](http://localhost:8080/). The interface renders directly in the browser. The command binds to loopback and persists saved connections in a named volume. The publishing workflow builds Linux amd64 and arm64 images after successful API and browser smoke tests.
 
 | Image tag | Published from |
 |---|---|

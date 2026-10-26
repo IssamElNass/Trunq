@@ -1257,15 +1257,19 @@ RESET ROLE;
             let restricted = crate::db::grants::Inventory::parse(&restricted).unwrap();
             assert!(restricted.grants.iter().any(|g| g.schema == "trunq_acl" && g.name == "secret"));
             c.simple_query("RESET ROLE").await.unwrap();
-            let exts = c.simple_query(crate::ui::extensions::INVENTORY_SQL).await.expect("extension query");
-            assert_eq!(exts.len(), 4);
-            assert!(exts[0].rows().any(|r| exts[0].s(r, 0) == "plpgsql" && !exts[0].s(r, 2).is_empty()));
-            assert!(exts[1].rows().any(|r| exts[1].s(r, 0) == "plpgsql"));
+            #[cfg(feature = "desktop")]
+            {
+                let exts = c.simple_query(crate::ui::extensions::INVENTORY_SQL).await.expect("extension query");
+                assert_eq!(exts.len(), 4);
+                assert!(exts[0].rows().any(|r| exts[0].s(r, 0) == "plpgsql" && !exts[0].s(r, 2).is_empty()));
+                assert!(exts[1].rows().any(|r| exts[1].s(r, 0) == "plpgsql"));
+            }
             c.simple_query("ROLLBACK").await.unwrap();
         });
     }
 
     #[test]
+    #[cfg(feature = "desktop")]
     fn pg_cron_previews_are_scoped_and_respect_rls() {
         let Ok(url) = std::env::var("TRUNQ_TEST_CRON_DATABASE_URL") else {
             return;
