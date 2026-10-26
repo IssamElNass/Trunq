@@ -462,7 +462,7 @@ fn azure_cli_token(cfg: &AzureConfig) -> Result<AccessToken> {
     if !cfg.tenant.trim().is_empty() {
         args.extend(["--tenant".into(), cfg.tenant.trim().into()]);
     }
-    let out = super::session::runtime()
+    let out = super::runtime()
         .block_on(super::credentials::run(if cfg!(windows) { "az.cmd" } else { "az" }, &args, Duration::from_secs(30)))
         .with_context(|| format!("Azure CLI token acquisition failed; check `az cloud set --name {}` and your CLI login", cfg.cloud.cli_name()))?;
     let v: serde_json::Value = serde_json::from_slice(&out).context("Azure CLI returned invalid JSON")?;

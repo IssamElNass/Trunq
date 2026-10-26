@@ -15,6 +15,9 @@ All notable changes to Trunq are documented here. The format follows
 
 ### Changed
 - Redesign Grants & access around grouped object/recipient permissions, a plain-language detail pane and explicit direct, inherited, PUBLIC and non-inherited membership labels. Use a neutral outlined selection with an accent marker, compact filters and readable membership options; keep SQL actions scoped to one selected grant.
+- Docker now serves a browser-rendered query client at `/`, replacing the VNC desktop and its fixed-resolution scaling. The default image builds without graphical dependencies; the optional native target remains available.
+- Added saved browser connections, TLS settings, schema/table browsing, SQL tabs and history, formatting, cancellation, portal paging, loaded-row CSV/JSON downloads and light/dark themes. Advanced native screens remain desktop-only; see the Docker guide for scope.
+- Docker CI now checks PostgreSQL workflows, browser sessions, request protection and responsive UI behavior before publication.
 
 ## [0.1.0] - 2026-10-27
 

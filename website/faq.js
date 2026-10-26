@@ -22,8 +22,8 @@ window.TRUNQ_FAQ = {
       a: "It requires encryption but does not check certificate trust or the hostname. Use verify-full for both checks, with the platform trust store configured. SSH host keys are checked separately. See {docs:tls-modes}." },
     { id: "export-columns", k: "export visible hidden columns filters charts loaded", topic: "help", q: "Why are hidden columns in my export?",
       a: "File export scopes choose rows, not columns, so hidden result columns are included. Select the columns you need in SQL for a narrower file. Save pending edits and refresh before exporting saved values. See {docs:export-scope}." },
-    { id: "docker", k: "container dockerhub docker hub compose novnc browser publish", topic: "basics", q: "Can I run Trunq with Docker?",
-      a: "Yes. Run docker compose up --build -d and open localhost:8080/vnc.html. It is the native app in a browser desktop, with a persistent workspace volume. Keep the provided loopback port binding: the desktop has no built-in authentication. See {docs:docker}. Native releases avoid desktop-streaming overhead." },
+    { id: "docker", k: "container dockerhub docker hub compose browser publish", topic: "basics", q: "Can I run Trunq with Docker?",
+      a: "Yes. Run docker compose up --build -d and open localhost:8080. The interface renders directly in your browser, with no VNC. Browse tables, run SQL and download loaded results. Saved connections persist in a volume. Keep the loopback binding or use an authenticated HTTPS proxy. Advanced native features remain desktop-only. See {docs:docker}." },
     { id: "erd", k: "schema diagram relations foreign keys mermaid svg", topic: "basics", q: "Can I view an ER diagram?",
       a: "Yes. Right-click a database, schema or table and choose ER diagram, or find it in the command palette. Pan, zoom, drag tables and export SVG or Mermaid. See {docs:relationships}." },
     // ── basics

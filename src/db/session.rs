@@ -37,11 +37,7 @@ mod authentication_tests {
     }
 }
 
-static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
-
-pub fn runtime() -> &'static tokio::runtime::Runtime {
-    RUNTIME.get_or_init(|| tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().thread_name("trunq-io").build().expect("tokio runtime"))
-}
+pub use super::runtime;
 
 /// Every connection Trunq has open, for the "Connections" panel and the
 /// status bar counter. Entries are removed by an RAII guard inside the

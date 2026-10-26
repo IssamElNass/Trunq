@@ -100,7 +100,7 @@ The twelve native client views are captured by [the screenshot script](../script
 
 Real Azure, OS-keychain, Windows and arm64 runtime tests require their respective environments and credentials; they were not exercised locally. A real OpenSSH bastion was exercised in the latest follow-up above. The SSH live test returns without connecting when its environment is absent. Unit coverage of helper code is not a substitute for those integrations.
 
-[The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 desktop before enabling a multi-platform registry publication. Docker Hub credentials have not been configured or used by this local work.
+[The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 browser client before enabling a multi-platform registry publication. Docker Hub credentials have not been configured or used by this local work.
 
 The native macOS close check initially reproduced the AppKit Touch Bar observer crash described in [egui #2768](https://github.com/emilk/egui/issues/2768). The client now selects eframe’s standalone exit path on macOS, which saves and destroys application state before exiting.
 
@@ -155,3 +155,16 @@ Live render timing now appears in the row-count tooltip, keeping the wrapping fo
 
 - Full locked suite against the disposable PostgreSQL 17.10 TLS/SCRAM fixture: **123 passed, 4 ignored benchmarks**. External-provider tests still require their own fixtures.
 - Formatting, Clippy with warnings denied, documentation links and `git diff --check` passed.
+
+## Docker browser client checkpoint — 2026-10-26
+
+The Docker default now builds the headless browser backend, with embedded HTML/CSS/JavaScript, instead of a virtual desktop. Local validation used that backend directly on macOS and an isolated PostgreSQL 17.10 server; it did not run inside Docker.
+
+- Native tests: 109 passed, four ignored. Headless tests: 63 passed, one ignored. Optional live-provider tests without their environment variables returned early.
+- Both headless and combined desktop/web Clippy checks passed with warnings denied; formatting and Compose configuration validation passed.
+- The HTTP integration check passed against PostgreSQL: cookie/session isolation, CSRF/host rejection, catalog browsing while a query cursor is open, 1,201-row paging, transaction errors/recovery, cancellation and startup read-only mode. Saved connection JSON rejects password fields.
+- Chromium passed query/paging, bounded grid rendering, filtering, loaded-row CSV download, HTML escaping, error recovery, workspace/session restore, light/dark themes and 390/768/1440-pixel layouts. The updated screenshot is from this real browser session. All 13 handbook/website browser checks and the Markdown link checker passed.
+- cargo-audit 0.22.2 reported zero vulnerabilities. Existing maintenance warnings remain for ttf-parser, zbus_names, zvariant and zvariant_derive, plus a yanked crypto-bigint version in the existing lockfile. These are not introduced by the new HTTP dependencies.
+- The Docker image build/runtime check could not run locally: the installed Colima VM failed during startup. The updated Docker workflow runs the API and browser checks against an isolated PostgreSQL 18 container before publication. This branch has not published an image.
+
+The browser client currently covers connections, table browsing and SQL/query workflows. It does not claim native feature parity; [the Docker guide](docker.md#browser-workflow-and-current-scope) lists the remaining desktop-only features and session/query limits.
