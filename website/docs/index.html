@@ -95,7 +95,7 @@
         <a href="#import">Importing CSV files</a>
         <a href="#relationships">ER diagrams &amp; metadata</a>
         <a href="#administration">Grants, extensions, jobs &amp; audits</a>
-        <a href="#docker">Docker &amp; Docker Hub</a>
+        <a href="#docker">Docker &amp; GitHub images</a>
         <a href="#performance">Performance</a>
         <a href="#navigation">Finding your way around</a>
         <p>Staying safe</p>
@@ -411,14 +411,28 @@ ORDER BY status;</code></pre></div>
     </section>
 
     <section>
-      <h2 id="docker">Docker &amp; Docker Hub</h2>
-      <p>The Docker image serves a browser-rendered query client. Text, controls and results render at your browser’s resolution, without VNC, a virtual desktop or desktop streaming.</p>
-      <div class="codeblock"><pre data-copyable><code>docker compose up --build -d</code></pre></div>
+      <h2 id="docker">Docker &amp; GitHub images</h2>
+      <p>The Docker image serves a browser-rendered query client. Text, controls and results render at your browser’s resolution.</p>
+      <div class="codeblock"><pre data-copyable><code>docker pull ghcr.io/issamelnass/trunq:dev
+docker run -d --name trunq \
+  -p 127.0.0.1:8080:8080 \
+  -v trunq-data:/data ghcr.io/issamelnass/trunq:dev</code></pre></div>
       <p>Open <a href="http://localhost:8080/">localhost:8080</a>, add a connection, then browse tables or run SQL. The Compose file saves connection details in a volume and publishes only on loopback. Passwords stay in server memory for the session. Keep the loopback binding or use an SSH tunnel or authenticated HTTPS proxy; set <code>TRUNQ_WEB_ORIGIN</code> to the proxy’s exact external origin. Connect to host PostgreSQL via <code>host.docker.internal</code>.</p>
       <figure class="doc__shot"><img src="../assets/shots/docker.webp" alt="Browser-rendered Trunq displaying PostgreSQL query results" width="1440" height="1000" loading="lazy"><figcaption>The browser-rendered client querying a disposable PostgreSQL server.</figcaption></figure>
       <p>The browser client includes SQL tabs, formatting, cancellation, paged results, loaded-row CSV/JSON downloads, history and themes. Editor tabs share one query connection and transaction; catalog browsing has a separate connection. Native row editing, CSV import, full-result export, diagrams, advanced administration screens, SSH and cloud sign-in remain available in the desktop app. See the full Docker guide for limits and upgrade details.</p>
-      <h3 id="dockerhub">Publish your image</h3>
-      <p>Configure the repository variable <code>DOCKERHUB_USERNAME</code> and secret <code>DOCKERHUB_TOKEN</code>. The Docker workflow smoke-tests before publishing amd64 and arm64 images. Pushes to <code>main</code> update <code>dev</code> and a commit tag when registry credentials are configured; stable version tags update <code>latest</code>. Manual publishing follows the selected ref. Nightly desktop downloads remain separate dated prereleases.</p>
+      <p>With this repository's Compose file, pull and run without a local build:</p>
+      <div class="codeblock"><pre data-copyable><code>TRUNQ_IMAGE=ghcr.io/issamelnass/trunq:dev docker compose up --no-build --pull always -d</code></pre></div>
+      <h3 id="image-tags">Image versions and tags</h3>
+      <div class="tablewrap"><table><thead><tr><th>Tag</th><th>Contents</th></tr></thead><tbody>
+        <tr><td><code>dev</code></td><td>Newest successful publication from main</td></tr>
+        <tr><td><code>latest</code></td><td>Most recently published stable version tag</td></tr>
+        <tr><td><code>0.1.0</code>, <code>0.1</code> (examples)</td><td>Exact release and major/minor alias from v0.1.0</td></tr>
+        <tr><td><code>0.2.0-rc.1</code> (example)</td><td>Prerelease; leaves latest unchanged</td></tr>
+        <tr><td><code>sha-&lt;short commit&gt;</code></td><td>Every published source commit</td></tr>
+      </tbody></table></div>
+      <p>These are publishing rules. Check <a href="https://github.com/IssamElNass/Trunq/pkgs/container/trunq/versions">published versions and tags</a> for actual availability; existing releases are not backfilled automatically. Pull commands require a completed publication. Use <code>docker pull ghcr.io/issamelnass/trunq:latest</code> for stable builds once a stable version is published, or substitute a published exact version.</p>
+      <h3 id="image-publishing">Publish your image</h3>
+      <p>The Docker workflow uses GitHub's built-in <code>GITHUB_TOKEN</code> with <code>packages: write</code>, and smoke-tests before publishing amd64 and arm64 images. Pushes to <code>main</code> update <code>dev</code> and a commit tag; stable version tags update <code>latest</code>. Manual publishing follows the selected ref; pull requests never publish. New packages start private: change the package's visibility to Public after its first upload for anonymous pulls. Nightly desktop downloads remain separate dated prereleases.</p>
       <p>See the <a href="https://github.com/IssamElNass/trunq/blob/main/docs/docker.md">full Docker guide</a> for manual Buildx commands, the native target, credentials and remote access.</p>
     </section>
 
