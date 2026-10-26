@@ -125,3 +125,15 @@ No critical issue remained in the paths exercised by these checks. The permissio
 
 The final work is integrated with main commit `9bf1377`, preserving its extension manager and security changes. macOS / Windows packaging, signing and the full PostgreSQL 13–18 matrix require CI. Local pg_cron integration needs `TRUNQ_TEST_CRON_DATABASE_URL`; CI's ordinary PostgreSQL service does not preload that extension. SSH, Azure and OS keychains were not exercised here. The release workflow still skips publication and signing for pull requests; adding the EXE does not publish a release from this review.
 
+
+## 26 October 2026 — TLS SCRAM, paging and connection identity
+
+Checks used macOS, Rust 1.99.1 and a disposable PostgreSQL 17.10 server configured for TLS and SCRAM host authentication. The original `y` channel-binding flag reproduced `FATAL: SCRAM channel binding negotiation error`; the corrected `n` flag authenticated successfully without changing the TLS setting. No real Azure account or production database was used.
+
+- Full locked test suite: 116 passed, 4 ignored benchmarks. PostgreSQL tests exercised repeated 1,000-row pages, Load all across multiple chunks, fetching after the cursor was exhausted, fetch errors, and closing cursors while preserving explicit transactions. Provider/SSH/client-certificate/pg_cron tests still require their own fixtures and may return early.
+- Locked build, formatting, Clippy with warnings denied, actionlint and documentation links passed. CI now enables TLS for its PostgreSQL 13–18 SCRAM matrix; those remote results must be checked on the PR.
+- Thirteen Playwright/Chrome handbook checks passed, including both themes and mobile layouts. The keyboard-shortcut check now uses Command on macOS.
+- Scripted native UI captures verified 1,000 → 2,000 → 3,000 rows, then Stop loading retained the 3,000 rows and returned the automatic transaction to idle. Long names and three environment profiles sharing the same database were checked in dark/light themes and at 900 × 620 logical pixels. The fixture workspace was not overwritten.
+- `cargo-audit 0.22.2` reported zero vulnerabilities, four existing unmaintained advisories and a yanked `crypto-bigint 0.7.6` in the unchanged lockfile. See the [audit record](security-review.md#scram-channel-binding-correction).
+
+Evidence: [compact window](screenshots/connection-environments-compact.png), [environment badges](screenshots/connection-environments.png), [light theme](screenshots/connection-environments-light.png), [repeated paging](screenshots/paging-more-rows.png) and [cursor closed with rows retained](screenshots/paging-stopped.png). All endpoints and records shown belong to the disposable local fixture.

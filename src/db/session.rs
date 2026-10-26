@@ -124,6 +124,8 @@ pub enum Cmd {
     Run { id: u64, statements: Vec<(String, Vec<Option<String>>)>, page_size: usize, rollback: bool },
     /// Fetch more rows from the open cursor; `rows == 0` fetches everything.
     FetchMore { id: u64, rows: usize },
+    /// Release a paged result without discarding the rows already in the UI.
+    CloseCursor { id: u64 },
     /// Run one parameterised statement to completion.
     Query { sql: String, params: Vec<Option<String>>, reply: Promise<QueryResult> },
     /// Run SQL through the simple protocol (multiple statements allowed).
@@ -427,8 +429,18 @@ impl Session {
         id
     }
 
-    pub fn fetch_more(&self, id: u64, rows: usize) {
+    pub fn fetch_more(&mut self, rows: usize) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
         let _ = self.tx.send(Cmd::FetchMore { id, rows });
+        id
+    }
+
+    pub fn close_cursor(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        let _ = self.tx.send(Cmd::CloseCursor { id });
+        id
     }
 
     pub fn query(&self, sql: impl Into<String>, params: Vec<Option<String>>) -> Promise<QueryResult> {
@@ -603,10 +615,12 @@ async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::R
             send(Event::RunFinished { id, elapsed: started.elapsed() });
         }
         Cmd::FetchMore { id, rows } => {
+            let t0 = Instant::now();
             if !conn.portal_open() {
+                send(Event::StmtDone { id, index: usize::MAX, tag: None, more: false, elapsed: t0.elapsed() });
+                send(Event::RunFinished { id, elapsed: t0.elapsed() });
                 return Ok(());
             }
-            let t0 = Instant::now();
             // Fetch in chunks so the UI can show progress on "fetch all".
             let chunk = if rows == 0 { 50_000 } else { rows };
             let mut remaining = rows;
@@ -644,6 +658,13 @@ async fn handle(conn: &mut PgConn, cmd: Cmd, send: &impl Fn(Event)) -> anyhow::R
                     }
                 }
             }
+            send(Event::RunFinished { id, elapsed: t0.elapsed() });
+        }
+        Cmd::CloseCursor { id } => {
+            let t0 = Instant::now();
+            conn.close_portal().await?;
+            send(Event::StmtDone { id, index: usize::MAX, tag: None, more: false, elapsed: t0.elapsed() });
+            send(Event::RunFinished { id, elapsed: t0.elapsed() });
         }
         Cmd::Query { sql, params, reply } => {
             let r = conn.query_params(&sql, &params).await;
@@ -739,6 +760,92 @@ mod live_tests {
         let mut params = profile.connect_params("", password.as_deref()).unwrap();
         params.password = password;
         Some(params)
+    }
+
+    #[test]
+    fn repeated_page_fetches_finish_and_release_the_implicit_transaction() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            let events = Mutex::new(Vec::new());
+            let send = |event| events.lock().push(event);
+            handle(
+                &mut conn,
+                Cmd::Run { id: 1, statements: vec![("SELECT g FROM generate_series(1, 3500) g".into(), vec![])], page_size: 1000, rollback: false },
+                &send,
+            )
+            .await
+            .unwrap();
+            for (id, expected_rows, more) in [(2, 1000, true), (3, 1000, true), (4, 500, false), (5, 0, false)] {
+                events.lock().clear();
+                handle(&mut conn, Cmd::FetchMore { id, rows: 1000 }, &send).await.unwrap();
+                let events = events.lock();
+                let rows: usize = events
+                    .iter()
+                    .filter_map(|e| match e {
+                        Event::Rows { rows, .. } => Some(rows.nrows()),
+                        _ => None,
+                    })
+                    .sum();
+                assert_eq!(rows, expected_rows);
+                assert!(events.iter().any(|e| matches!(e, Event::StmtDone { id: event_id, more: available, .. } if *event_id == id && *available == more)));
+                assert!(matches!(events.last(), Some(Event::RunFinished { id: event_id, .. }) if *event_id == id));
+            }
+            assert!(!conn.portal_open());
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+
+            // Load-all also completes, even after the initial paged execution.
+            conn.start("SELECT g FROM generate_series(1, 55000) g", &[], 1000).await.unwrap().1.unwrap();
+            events.lock().clear();
+            handle(&mut conn, Cmd::FetchMore { id: 6, rows: 0 }, &send).await.unwrap();
+            let events = events.lock();
+            let rows: usize = events
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Rows { rows, .. } => Some(rows.nrows()),
+                    _ => None,
+                })
+                .sum();
+            assert_eq!(rows, 54000);
+            assert!(matches!(events.last(), Some(Event::RunFinished { id: 6, .. })));
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+        });
+    }
+
+    #[test]
+    fn closing_a_paged_cursor_preserves_manual_transactions() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            for manual in [false, true] {
+                if manual {
+                    conn.simple_query("BEGIN").await.unwrap();
+                }
+                conn.start("SELECT g FROM generate_series(1, 10) g", &[], 1).await.unwrap().1.unwrap();
+                let events = Mutex::new(Vec::new());
+                handle(&mut conn, Cmd::CloseCursor { id: 1 }, &|event| events.lock().push(event)).await.unwrap();
+                assert!(!conn.portal_open());
+                assert_eq!(conn.tx_status, if manual { TxStatus::InTransaction } else { TxStatus::Idle });
+                assert!(matches!(events.lock().last(), Some(Event::RunFinished { id: 1, .. })));
+                conn.simple_query("ROLLBACK").await.unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn failed_page_fetch_finishes_and_the_connection_recovers() {
+        let Some(params) = connection_params() else { return };
+        runtime().block_on(async {
+            let mut conn = PgConn::connect(&params).await.unwrap();
+            conn.start("SELECT 10 / (3 - g) FROM generate_series(1, 5) g", &[], 1).await.unwrap().1.unwrap();
+            let events = Mutex::new(Vec::new());
+            handle(&mut conn, Cmd::FetchMore { id: 2, rows: 1000 }, &|event| events.lock().push(event)).await.unwrap();
+            assert!(events.lock().iter().any(|e| matches!(e, Event::StmtError { id: 2, .. })));
+            assert!(matches!(events.lock().last(), Some(Event::RunFinished { id: 2, .. })));
+            assert!(!conn.portal_open());
+            assert_eq!(conn.tx_status, TxStatus::Idle);
+            assert_eq!(conn.query_params("SELECT 1", &[]).await.unwrap().get(0, 0), Some("1"));
+        });
     }
 
     #[test]

@@ -25,7 +25,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
   cargo test --locked live_tests -- --test-threads=1
 ```
 
-This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, CSV/SQL export round trips and the extension manager's trusted-extension install/upgrade/recovery with a restricted role. The latter needs an absent `hstore` or `pg_trgm` extension and its server files; it cleans up only its own extension/schema/role fixtures. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
+This includes protocol paging and error recovery, COPY, catalog queries, atomic table saves, failed export recovery, CSV/SQL export round trips and the extension manager's trusted-extension install/upgrade/recovery with a restricted role. The latter needs an absent `hstore` or `pg_trgm` extension and its server files; it cleans up only its own extension/schema/role fixtures. Tests create fixtures; do not point them at a production database. CI runs PostgreSQL 13–18 with TLS and SCRAM authentication. Set `?sslmode=require` on the disposable test URL to exercise the TLS SCRAM regression locally; the fixture must enable TLS and use SCRAM for host logins. SSH needs its separately configured test environment; Azure and operating-system keychains need their respective services.
 
 Optional fixture checks:
 
@@ -65,7 +65,7 @@ src/
 
   Steps: `wait:<s>`, `run`, `runall`, `dryrun`, `explain[:analyze]`, `sql:<text>` (separate with `;;`), `open:<schema.table>`,
   `tab:<n>`, `palette:<query>`, `health`, `grants`, `cron`, `inspect:view=objects|defaults|memberships`, `inspect:role=<name>`, `inspect:search=<text>`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
-  `pin`, `side`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
+  `pin`, `side`, `bottom`, `stoploading`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 
 ## Release and nightly builds
@@ -95,7 +95,7 @@ To rebuild an existing tag, run **Actions → Release → Run workflow** from th
 | Debian version | `<base-version>~nightly.<date>.<run>+g<sha>`, which sorts before the matching stable version |
 | Actions artifact retention | 7 days for snapshots; release assets remain on the GitHub Release |
 
-The schedule starts only once this workflow is on the default branch. GitHub scheduled events may be delayed. New workflow runs have distinct snapshot tags, so the workflow does not move older nightly tags or delete previous releases. Re-running the same Actions run with the same snapshot identity can replace its release assets; start a new manual dispatch when you need a separate snapshot. Failed platform builds leave previous published snapshots available.
+The schedule starts only once this workflow is on the default branch. GitHub scheduled events may be delayed. New workflow runs have distinct snapshot tags, so the workflow does not move older nightly tags or delete previous releases. Assets upload to a draft before publication. Once published, an immutable release cannot accept replacement or additional assets; start a new manual dispatch for a fresh snapshot instead of re-running a published identity. Failed platform builds leave previous published snapshots available.
 
 The app's displayed version remains the Cargo source version. Identify a snapshot from its filename, release commit and `BUILD_INFO.txt`. Nightlies are application snapshots built with the stable Rust toolchain; they do not require Rust nightly. Unit tests without database/SSH fixtures do not exercise those integrations; the separate CI protocol matrix covers PostgreSQL 13–18.
 

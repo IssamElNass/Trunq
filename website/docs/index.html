@@ -191,6 +191,8 @@ psql -d shop -f dev/sample.sql</code></pre></div>
         <li><b><code>~/.pgpass</code>:</b> picked up automatically.</li>
         <li><b>Connection URLs:</b> paste a <code>postgres://</code> URL and Trunq fills in the form.</li>
       </ul>
+      <p>Save a separate connection profile for each environment, even when the database names match. Set <b>Environment</b> and optionally <b>Group</b> in the connection dialog. Persistent badges identify connections in the sidebar and tabs; <b>UNSET</b> means no environment was chosen, and Production stays red independently of a custom profile colour. Hover truncated names to read their full text.</p>
+      <figure class="doc__shot"><img src="../assets/shots/connection-environments.webp" alt="DEV, PRODUCTION and STAGING badges remain visible with long connection names" width="1440" height="900" loading="lazy"><figcaption>Illustrative environments sharing one disposable local database. Labels do not change database privileges. <a href="../assets/shots/connection-environments-light.webp">Light-theme view</a>.</figcaption></figure>
       <h3 id="tls-modes">Choose the TLS checks you need</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>Mode</th><th>Encryption</th><th>Certificate / hostname checks</th></tr></thead>
@@ -319,6 +321,8 @@ LIMIT 100;</code></pre></div>
         <li><b>Follow foreign keys:</b> <kbd data-mod>⌘</kbd>-click a foreign key value to jump to the row it points to, in any result.</li>
         <li><b>Value viewer</b> with pretty-printed JSON.</li>
       </ul>
+      <p>A partially fetched result keeps a server cursor and an implicit transaction open. Choose <b>Stop loading</b> to keep the loaded rows and close the cursor, or load the complete result. To fetch it again after stopping, refresh or rerun the query. Manual transactions still require <b>Commit</b> or <b>Rollback</b>.</p>
+      <figure class="doc__shot"><img src="../assets/shots/paging-stopped.webp" alt="Three thousand loaded rows remain after closing the paged cursor and its automatic transaction" width="1440" height="900" loading="lazy"><figcaption>Repeated paging followed by Stop loading, against a disposable fixture. <a href="../assets/shots/paging-more-rows.webp">Before closing the cursor</a>.</figcaption></figure>
       <h3 id="export-scope">Export the rows you mean</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>Export option</th><th>Included rows</th></tr></thead>
@@ -583,7 +587,7 @@ TRUNQ_TEST_DATABASE_URL=postgres://… cargo test --release --locked bench_fetch
         <dt>"password authentication failed" or "no password supplied"</dt>
         <dd>Type the password in the field that appears in the sidebar or above the editor. It's remembered for the session, and saved in the keychain if <i>Save in keychain</i> is on.</dd>
         <dt>Azure: <code>AADSTS…</code> errors</dt>
-        <dd>Check the tenant, check that your account (or its group) was added as an Entra admin or role on the server, and check that the right cloud is selected. If your organisation's policy blocks the browser flow, try <i>Device code</i>.</dd>
+        <dd>A fatal SCRAM channel-binding negotiation error mentioning the letter <code>n</code> is fixed in the next Trunq build; update the client and reconnect with TLS enabled. Check the tenant, check that your account (or its group) was added as an Entra admin or role on the server, and check that the right cloud is selected. If your organisation's policy blocks the browser flow, try <i>Device code</i>.</dd>
         <dt>The app window is blank on an old GPU or virtual machine</dt>
         <dd>Start Trunq with <code>WGPU_BACKEND=gl</code> to use OpenGL.</dd>
         <dt>Keychain prompts on macOS</dt>

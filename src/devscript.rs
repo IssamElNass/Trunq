@@ -81,7 +81,7 @@ impl Script {
                     "grants" => Step::Grants,
                     "cron" => Step::Cron,
                     "chart" => Step::Chart,
-                    "card" | "compare" | "value" | "pin" | "side" | "search" | "ts" | "finder" | "hideempty" | "inspect" => {
+                    "card" | "compare" | "value" | "pin" | "side" | "search" | "ts" | "finder" | "hideempty" | "inspect" | "bottom" | "stoploading" => {
                         Step::TabDev(cmd.to_string(), arg.to_string())
                     }
                     "sessions" => Step::Sessions,

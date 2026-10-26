@@ -12,6 +12,10 @@ const VIEWER_W: f32 = 380.0;
 impl QueryTab {
     /// Development / screenshot automation hooks (TRUNQ_SCRIPT).
     pub fn dev(&mut self, cmd: &str, arg: &str) {
+        if cmd == "stoploading" {
+            self.close_cursor();
+            return;
+        }
         let idx = self.active_pane;
         let Some(p) = self.panes.get_mut(idx) else { return };
         match cmd {
@@ -21,6 +25,7 @@ impl QueryTab {
             "search" => p.grid.filter = arg.to_string(),
             "finder" => p.grid.open_finder(),
             "hideempty" => p.grid.hide_empty = !p.grid.hide_empty,
+            "bottom" => p.grid.focus_row(p.rs.nrows().saturating_sub(1)),
             "ts" => {
                 self.ts_mode = match arg {
                     "utc" => TsMode::Utc,
@@ -130,7 +135,7 @@ impl QueryTab {
         self.filter_chips(ui);
         let footer_h =
             if ui.available_width() < 1000.0 && (self.panes[idx].more || self.panes[idx].grid.selected_count() > 1) { FOOTER_H * 2.0 } else { FOOTER_H };
-        let grid_h = (ui.available_height() - footer_h).max(0.0);
+        let grid_h = (ui.available_height() - footer_h - ui.spacing().item_spacing.y).max(0.0);
         let viewer_w = if self.viewer.is_some() { VIEWER_W.min(ui.available_width() * 0.45) } else { 0.0 };
         let pinned_idx = self.panes.iter().position(|p| p.pinned).filter(|&i| i != idx && self.side_by_side);
         let mut action = None;
@@ -566,6 +571,8 @@ impl QueryTab {
     fn footer(&mut self, ui: &mut Ui, ctx: &mut TabCtx, idx: usize) {
         let pal = theme::p();
         let mut fetch: Option<bool> = None;
+        let mut close_cursor = false;
+        let compact = ui.available_width() < 700.0;
         let pane = &mut self.panes[idx];
         ui.painter().hline(ui.available_rect_before_wrap().x_range(), ui.cursor().top(), egui::Stroke::new(1.0, pal.border));
         egui::Frame::NONE.fill(pal.bg1).inner_margin(egui::Margin::symmetric(12, 3)).show(ui, |ui| {
@@ -577,7 +584,7 @@ impl QueryTab {
                 if shown != total + self.table.as_ref().map_or(0, |t| t.edits.inserted.len()) {
                     txt = format!("{} of {txt}", util::thousands(shown));
                 }
-                ui.label(RichText::new(txt).small().color(pal.dim));
+                let count = ui.label(RichText::new(txt).small().color(pal.dim));
                 // timing breakdown
                 let mut timing = Vec::new();
                 if let Some(e) = pane.exec_ms {
@@ -587,15 +594,23 @@ impl QueryTab {
                     timing.push(format!("fetch {}", ms(f)));
                 }
                 timing.push(format!("render {}", ms(pane.grid.render_ms)));
-                ui.label(RichText::new(format!("· {}", timing.join(" · "))).small().color(pal.faint)).on_hover_text(
-                    "query: until the server returned the first rows (planning + execution)\nfetch: transferring the remaining rows\nrender: drawing the last frame of this grid",
-                );
+                if compact {
+                    count.on_hover_text(timing.join(" · "));
+                } else {
+                    ui.label(RichText::new(format!("· {}", timing.join(" · "))).small().color(pal.faint)).on_hover_text(
+                        "query: until the server returned the first rows (planning + execution)\nfetch: transferring the remaining rows\nrender: drawing the last frame of this grid",
+                    );
+                }
                 ui.label(RichText::new(format!("· {}", util::bytes(pane.rs.byte_size()))).small().color(pal.faint));
                 let sel = pane.grid.selected_count();
                 if sel > 1 {
-                    ui.label(RichText::new(format!("· {} selected", util::thousands(sel))).small().color(pal.accent));
+                    let selected = ui.label(RichText::new(format!("· {} selected", util::thousands(sel))).small().color(pal.accent));
                     if let Some(stats) = pane.grid.selection_stats(&pane.rs, &pane.cats, self.table.as_ref().map(|t| &t.edits)) {
-                        ui.label(RichText::new(stats).small().color(pal.dim));
+                        if compact {
+                            selected.on_hover_text(stats);
+                        } else {
+                            ui.label(RichText::new(stats).small().color(pal.dim));
+                        }
                     }
                 }
                 if pane.more {
@@ -604,13 +619,16 @@ impl QueryTab {
                         ui.spinner();
                         ui.label(RichText::new("loading…").small());
                     } else {
-                        ui.label(RichText::new("More rows on the server").small().color(pal.warn));
+                        ui.label(RichText::new(if compact { "More rows" } else { "More rows on the server" }).small().color(pal.warn));
                         if w::small_button(ui, w::Kind::Secondary, icon::CHEVRONS_DOWN, &format!("Load {} more", util::thousands(ctx.settings.page_size.max(1000)))).clicked() {
                             fetch = Some(false);
                         }
                         if w::small_button(ui, w::Kind::Ghost, icon::DOWNLOAD, "Load all").clicked() {
                             fetch = Some(true);
                         }
+                        close_cursor = w::small_button(ui, w::Kind::Ghost, icon::X, "Stop loading")
+                            .on_hover_text("Keep loaded rows and close the server cursor. Manual transactions still need Commit or Rollback.")
+                            .clicked();
                     }
                 }
             });
@@ -624,10 +642,13 @@ impl QueryTab {
             && fetch.is_none()
             && pane.grid.filter.is_empty()
             && pane.grid.col_filters.is_empty()
+            && !close_cursor
         {
             fetch = Some(false);
         }
-        if let Some(all) = fetch {
+        if close_cursor {
+            self.close_cursor();
+        } else if let Some(all) = fetch {
             self.fetch_more(ctx, all);
         }
     }

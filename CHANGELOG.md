@@ -4,6 +4,14 @@ All notable changes to Trunq are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Correct the SCRAM channel-binding flag (`n` instead of `y`) when authenticating over TLS, including Azure PostgreSQL connections.
+- Complete every paged fetch so repeated scrolling, Load more and Load all do not leave query tabs stuck busy. Closing a cursor keeps loaded rows and releases its implicit transaction while preserving manual transactions.
+- Keep environment badges visible in the sidebar, query tabs and connection selector, including when multiple profiles share a database name. Production stays red independently of the custom profile colour; unlabelled profiles show UNSET.
+- Truncate long connection, object and menu names with full text on hover, reserve status-bar controls, and wrap environment choices in the connection dialog.
+
 ## [0.1.0] - 2026-10-27
 
 First public release.

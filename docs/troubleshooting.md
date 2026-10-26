@@ -26,6 +26,8 @@ For `no pg_hba.conf entry`, PostgreSQL rejected the connection's source address,
 
 If Linux cannot remember a password, check that a Secret Service provider such as GNOME Keyring or KWallet is available and unlocked in that desktop session. The Docker desktop has no configured keychain service; use session entry or a protected password file there. macOS may request keychain access for the application; allow access if this is the app you intend to use.
 
+A fatal `SCRAM channel binding negotiation error` mentioning the letter `n` is a client protocol error fixed in the next Trunq build. Update the client and reconnect with your existing TLS setting. This applies after browser sign-in too, because PostgreSQL authentication is a separate step. If Entra authentication is still rejected, verify the case-sensitive database role or group, tenant and signed-in account; a successful browser login alone does not grant database access.
+
 ## TLS handshake or certificate errors
 
 `require` requires encryption but does not validate the server certificate or hostname. `verify-ca` validates certificate trust; `verify-full` also validates the database hostname. For verification failures, check the computer's clock, the certificate chain, the platform trust store and the Host field's match with the certificate.
@@ -59,6 +61,7 @@ The row editor is not an automatic conflict-resolution tool. Refresh and review 
 - Grid search and local sorting cannot inspect unfetched rows. Run the condition in SQL or fetch the necessary pages.
 - Table WHERE/ORDER BY text is SQL on the server. Check it and any remembered table filters before assuming data is missing.
 - **Columns → Show all columns** restores manually hidden columns. Turn off **Hide empty columns** when needed; emptiness is based on the loaded rows.
+- If a paged result stops after the second scroll and stays busy, update Trunq: earlier builds failed to finish the fetch operation. **Stop loading** closes a healthy paused cursor and retains loaded rows. A manual transaction still requires Commit or Rollback.
 - A pinned result retains loaded rows, but rerunning closes its old cursor. Run a large SELECT separately if you need to continue paging it after a script.
 - Charts use loaded result rows and their own axes, not grid search/filter chips. Bars are limited to 300 rows; aggregate or limit deliberately in SQL.
 - File exports include all result columns, including hidden columns. Select the required columns in SQL for a narrower export.
