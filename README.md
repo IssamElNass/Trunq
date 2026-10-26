@@ -94,13 +94,26 @@ Passwords are saved in your operating system keychain. Trunq also understands `~
 | Develop, test and release | [Developer guide](docs/development.md) |
 | See every documentation page | [Documentation index](docs/README.md) |
 
-## Docker and Docker Hub
+## Docker image on GitHub
 
 ```sh
-docker compose up --build -d
+docker pull ghcr.io/issamelnass/trunq:dev
+docker run -d --name trunq \
+  -p 127.0.0.1:8080:8080 --shm-size=256m \
+  -v trunq-data:/data ghcr.io/issamelnass/trunq:dev
 ```
 
-Open [the local desktop](http://localhost:8080/vnc.html?autoconnect=true&resize=scale). The supplied Compose file binds to loopback and persists settings in a named volume. The [Docker guide](docs/docker.md) explains database connections, files, authentication considerations and image publishing.
+Open [the local desktop](http://localhost:8080/vnc.html?autoconnect=true&resize=scale). The command binds to loopback and persists settings in a named volume. The publishing workflow builds Linux amd64 and arm64 images after a successful smoke test.
+
+| Image tag | Published from |
+|---|---|
+| `dev` | Latest successful build of `main` |
+| `latest` | Latest successfully published stable version tag |
+| `0.1.0`, `0.1` (examples) | Git tag `v0.1.0`; exact version and major/minor aliases |
+| `0.2.0-rc.1` (example) | Prerelease Git tag `v0.2.0-rc.1`; leaves `latest` unchanged |
+| `sha-<short commit>` | Every published build, including manual branch builds |
+
+Check [published versions and tags](https://github.com/IssamElNass/Trunq/pkgs/container/trunq/versions) before choosing a version; this table describes the publishing policy, and previous release tags are not backfilled automatically. The first GHCR publication must complete before these pull commands work. The [Docker guide](docs/docker.md) includes Compose commands, stable-version pulls, package visibility and publishing details. To build locally instead, run `docker compose up --build -d`.
 
 ## Install from source
 

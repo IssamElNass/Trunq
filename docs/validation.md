@@ -100,7 +100,7 @@ The twelve native client views are captured by [the screenshot script](../script
 
 Real Azure, OS-keychain, Windows and arm64 runtime tests require their respective environments and credentials; they were not exercised locally. A real OpenSSH bastion was exercised in the latest follow-up above. The SSH live test returns without connecting when its environment is absent. Unit coverage of helper code is not a substitute for those integrations.
 
-[The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 desktop before enabling a multi-platform registry publication. Docker Hub credentials have not been configured or used by this local work.
+[The protocol CI matrix](../.github/workflows/ci.yml) covers PostgreSQL 13–18. [Docker CI](../.github/workflows/docker.yml) verifies an amd64 desktop before enabling a multi-platform registry publication. Registry credentials were not configured or used by this local check.
 
 The native macOS close check initially reproduced the AppKit Touch Bar observer crash described in [egui #2768](https://github.com/emilk/egui/issues/2768). The client now selects eframe’s standalone exit path on macOS, which saves and destroys application state before exiting.
 

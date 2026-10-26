@@ -58,7 +58,7 @@ First public release.
 - ER diagram entry points in database, schema and table menus and the command palette.
 - Browser groups for roles, tablespaces, indexes, constraints, triggers, RLS and policies.
 - Editable `pg_stat_statements` slow-query template and PostgreSQL research notes.
-- Multi-stage Docker images (native and noVNC desktop), Compose workspace volume and Docker Hub workflow with a desktop smoke test.
+- Multi-stage Docker images (native and noVNC desktop), Compose workspace volume and container publishing workflow with a desktop smoke test.
 - Screenshot PNG encoding runs off the GPU/UI thread and scripts wait for completed files.
 - Isolated `TRUNQ_CONFIG_DIR`, reproducible screenshot script, new screenshots and performance checks.
 - PostgreSQL 18 in the protocol test matrix.
