@@ -310,7 +310,11 @@ jobs:
         with:
           name: release-bundle
           path: .
-      - uses: softprops/action-gh-release@v3
+      # Immutable releases lock assets on publication, including prereleases.
+      # Upload everything to a draft before publishing it in the next step.
+      - name: Create draft and upload assets
+        id: draft_release
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: Trunq ${{ needs.meta.outputs.version }}
@@ -318,4 +322,14 @@ jobs:
           make_latest: ${{ needs.meta.outputs.nightly == 'true' && 'false' || 'legacy' }}
           body_path: notes.md
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          draft: true
           files: dist/*
+          fail_on_unmatched_files: true
+      - name: Publish completed draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft_release.outputs.id }}
+          MAKE_LATEST: ${{ needs.meta.outputs.nightly == 'true' && 'false' || 'legacy' }}
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --field draft=false --raw-field make_latest="$MAKE_LATEST" --silent
