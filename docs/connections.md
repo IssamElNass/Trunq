@@ -6,7 +6,13 @@
 
 Create a profile with **New connection** and use **Test connection** before saving it. Give similar servers distinct names, groups and environment labels. The profile, user and database appear in the status bar; a Production label adds a red indicator. Labels and colours describe a connection; they do not change database privileges.
 
+Use a separate saved profile for each environment, even when the database names match. Set **Environment** in the connection dialog and optionally use **Group** for the application or team. The sidebar and tab strip always show the environment badge; **UNSET** means no environment was chosen. Production badges remain red even with a custom profile colour. Hover an abbreviated connection or object name to read the full text.
+
 Each query tab has its own database session. The object browser and other tabs can therefore be connected while one tab has failed. Changing a saved profile applies to new sessions; existing sessions keep their connection. Reconnect affected tabs after changing the host, authentication, TLS or timeout settings.
+
+![The same database name across DEV, PRODUCTION and STAGING connection profiles](screenshots/connection-environments.png)
+
+These profiles all target one disposable local fixture. Their environment labels demonstrate the display; they do not identify actual production infrastructure. [Light-theme view](screenshots/connection-environments-light.png) · [Compact window](screenshots/connection-environments-compact.png).
 
 ## Connection URL support
 

@@ -47,6 +47,12 @@ Trunq prompts for each name and sends the values as PostgreSQL parameters. Repea
 
 Results initially contain up to the configured page size (1,000 rows by default). Scroll to fetch more, or choose **Load all** to retain the full result in memory. Search, local filters, sorting and aggregates operate on loaded rows. A table view's filter bar instead adds a server-side WHERE clause.
 
+A partially fetched result keeps a server cursor and an implicit transaction open between pages. Choose **Stop loading** in the result footer to keep the loaded rows and close that cursor; use **Refresh** or run the query again to resume from the beginning. Reading the complete result also closes its cursor. In Manual mode, closing the cursor preserves your transaction: still choose **Commit** or **Rollback** explicitly.
+
+![Three thousand rows loaded after repeated paging](screenshots/paging-more-rows.png)
+
+After **Stop loading**, the [loaded result remains and the automatic transaction is closed](screenshots/paging-stopped.png). These captures use a disposable database.
+
 ## Editing and transactions
 
 Double-click a table to browse it. A primary key is required for editing existing records. Edit a cell, add or duplicate a row, or mark rows for deletion, then use **Preview SQL** before **Save**.

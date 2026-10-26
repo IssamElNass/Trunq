@@ -425,7 +425,10 @@ impl PgConn {
                     if !has_scram {
                         bail!("server requested an unsupported SASL mechanism");
                     }
-                    let mut scram = sasl::ScramSha256::new(pw.as_bytes(), sasl::ChannelBinding::unrequested());
+                    // We do not supply TLS channel-binding data. `unrequested`
+                    // sends `y,,` (binding supported, server allegedly cannot),
+                    // which a TLS PostgreSQL server must reject as a downgrade.
+                    let mut scram = sasl::ScramSha256::new(pw.as_bytes(), sasl::ChannelBinding::unsupported());
                     frontend::sasl_initial_response(sasl::SCRAM_SHA_256, scram.message(), &mut self.wbuf)?;
                     self.flush().await?;
                     match self.read_raw().await? {
@@ -888,7 +891,6 @@ mod live_tests {
         let (p, pw) = crate::config::Profile::from_url(&url)?;
         let mut cp = p.connect_params("", pw.as_deref()).ok()?;
         cp.password = pw;
-        cp.ssl_mode = SslMode::Prefer;
         Some(cp)
     }
 
@@ -951,6 +953,20 @@ mod live_tests {
             assert_eq!(db.code, "42P01");
             assert!(db.position.is_some());
             assert_eq!(c.query_params("SELECT 1", &[]).await.unwrap().get(0, 0), Some("1"));
+        });
+    }
+
+    #[test]
+    fn scram_authentication_over_tls() {
+        let Some(p) = params() else { return };
+        if p.ssl_mode < SslMode::Require {
+            return;
+        }
+        rt().block_on(async {
+            let mut c = PgConn::connect(&p).await.expect("SCRAM login on a TLS server advertising SCRAM-SHA-256-PLUS");
+            assert!(c.cancel.used_tls);
+            assert_eq!(c.query_params("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()", &[]).await.unwrap().get(0, 0), Some("t"));
+            c.terminate().await;
         });
     }
 

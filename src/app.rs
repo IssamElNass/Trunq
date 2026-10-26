@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use egui::{Align, Align2, Color32, FontId, Layout, RichText, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::action::{Action, ToastKind};
-use crate::config::{Config, History, Profile, SavedTab, ThemeChoice};
+use crate::config::{Config, Environment, History, Profile, SavedTab, ThemeChoice};
 use crate::db::azure::{self, SignInPrompt};
 use crate::db::meta::{self, Catalog, RelKind};
 use crate::db::result::ResultSet;
@@ -642,7 +642,7 @@ impl App {
         }
         let connected = server.is_connected();
         let connecting = server.root.as_ref().is_some_and(|s| !s.connected && s.is_alive());
-        let color = profile.color.map(theme::rgb).unwrap_or(pal.accent);
+        let color = profile.environment.color().or(profile.color).map(theme::rgb).unwrap_or(pal.accent);
         let status = if server.error.is_some() {
             pal.danger
         } else if connected {
@@ -659,7 +659,8 @@ impl App {
         } else {
             format!("{}:{} · {}", profile.host, profile.port, profile.database)
         };
-        let (resp, hover_action) = server_row(ui, &profile.display_name(), &subtitle, color, status, server.expanded, profile.is_azure(), profile.read_only);
+        let (resp, hover_action) =
+            server_row(ui, &profile.display_name(), &subtitle, color, status, server.expanded, profile.is_azure(), profile.read_only, profile.environment);
         match hover_action {
             Some(0) => actions.push(Action::NewQuery { profile: pid, db: profile.database.clone(), sql: String::new(), run: false }),
             Some(1) => {
@@ -1146,6 +1147,13 @@ impl App {
     fn tab_strip(&mut self, ui: &mut Ui) {
         let pal = theme::p();
         let mut close = None;
+        let state = (self.active, ui.available_width().round() as u32);
+        let reveal_active = ui.ctx().data_mut(|data| {
+            let id = egui::Id::unique("active-tab-strip-viewport");
+            let changed = data.get_temp::<(usize, u32)>(id) != Some(state);
+            data.insert_temp(id, state);
+            changed
+        });
         egui::ScrollArea::horizontal().id_salt("tabstrip").scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 1.0;
@@ -1160,7 +1168,13 @@ impl App {
                         Tab::Grants(g) => (g.title.clone(), false, false, false),
                         Tab::Cron(c) => (c.title.clone(), false, false, false),
                     };
-                    let color = t.profile().and_then(|p| self.profile(p)).and_then(|p| p.color).map(theme::rgb);
+                    let profile = t.profile().and_then(|id| self.cfg.profiles.iter().find(|p| p.id == id));
+                    let color = profile.and_then(|p| p.environment.color().or(p.color)).map(theme::rgb);
+                    let env_g = profile.map(|p| {
+                        let color = p.environment.color().map(theme::rgb).unwrap_or(pal.faint);
+                        ui.fonts_mut(|f| f.layout_no_wrap(p.environment.badge_label().to_string(), theme::bold(9.5), color))
+                    });
+                    let env_w = env_g.as_ref().map_or(0.0, |g| g.size().x + 16.0);
                     let ico = match t {
                         Tab::Health(_) => icon::SHIELD,
                         Tab::Sessions(_) => icon::ACTIVITY,
@@ -1171,8 +1185,12 @@ impl App {
                         _ if is_table => icon::TABLE,
                         _ => icon::FILE_CODE,
                     };
-                    let w = (ui.fonts_mut(|f| f.layout_no_wrap(title.clone(), FontId::proportional(13.0), Color32::WHITE).size().x) + 64.0).clamp(90.0, 240.0);
+                    let w = (ui.fonts_mut(|f| f.layout_no_wrap(title.clone(), FontId::proportional(13.0), Color32::WHITE).size().x) + 64.0 + env_w)
+                        .clamp(90.0, 300.0);
                     let (rect, resp) = ui.allocate_exact_size(vec2(w, 32.0), Sense::click());
+                    if active && reveal_active {
+                        resp.scroll_to_me(None);
+                    }
                     let p = ui.painter();
                     if active {
                         p.rect_filled(rect, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, pal.bg0);
@@ -1184,10 +1202,16 @@ impl App {
                     p.text(rect.left_center() + vec2(12.0, 0.0), Align2::LEFT_CENTER, ico, FontId::proportional(13.0), color.unwrap_or(fg));
                     let tg = ui.fonts_mut(|f| {
                         let mut job = egui::text::LayoutJob::single_section(title.clone(), egui::TextFormat::simple(FontId::proportional(13.0), fg));
-                        job.wrap = egui::text::TextWrapping::truncate_at_width(w - 62.0);
+                        job.wrap = egui::text::TextWrapping::truncate_at_width((w - 62.0 - env_w).max(10.0));
                         f.layout_job(job)
                     });
                     p.galley(pos2(rect.left() + 32.0, rect.center().y - tg.size().y / 2.0), tg, fg);
+                    if let Some(g) = env_g {
+                        let color = profile.and_then(|p| p.environment.color()).map(theme::rgb).unwrap_or(pal.faint);
+                        let badge = egui::Rect::from_min_size(pos2(rect.right() - 25.0 - env_w, rect.center().y - 8.0), vec2(env_w - 4.0, 16.0));
+                        p.rect_filled(badge, 4.0, color.gamma_multiply(0.14));
+                        p.galley(badge.min + vec2(6.0, 2.0), g, color);
+                    }
                     let cr = egui::Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(18.0, 18.0));
                     let close_hover = ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| cr.contains(p));
                     if running {
@@ -1210,7 +1234,10 @@ impl App {
                     if resp.middle_clicked() {
                         close = Some(i);
                     }
-                    resp.on_hover_text(&title);
+                    resp.on_hover_text(profile.map_or_else(
+                        || title.clone(),
+                        |p| format!("{title}\n{} · {}\n{}@{}:{}", p.display_name(), p.environment.badge_label(), p.user, p.host, p.port),
+                    ));
                 }
                 if ui
                     .add(egui::Button::new(RichText::new(icon::PLUS).size(14.0)).frame(false).min_size(vec2(32.0, 32.0)))
@@ -1299,7 +1326,7 @@ impl App {
                         w::section(ui, "Recent connections");
                         ui.add_space(6.0);
                         for p in self.cfg.profiles.iter().take(6) {
-                            let color = p.color.or(p.environment.color()).map(theme::rgb).unwrap_or(pal.accent);
+                            let color = p.environment.color().or(p.color).map(theme::rgb).unwrap_or(pal.accent);
                             let (rect, resp) = ui.allocate_exact_size(vec2(width, 44.0), Sense::click());
                             if resp.hovered() {
                                 ui.painter().rect_filled(rect, 8.0, pal.control_hover);
@@ -1308,14 +1335,15 @@ impl App {
                             let av = egui::Rect::from_center_size(pos2(rect.left() + 22.0, rect.center().y), vec2(28.0, 28.0));
                             ui.painter().rect_filled(av, 7.0, color.gamma_multiply(0.18));
                             ui.painter().text(av.center(), Align2::CENTER_CENTER, icon::SERVER, FontId::proportional(14.0), color);
-                            ui.painter().text(pos2(rect.left() + 46.0, rect.top() + 13.0), Align2::LEFT_CENTER, p.display_name(), theme::bold(13.5), pal.text);
-                            ui.painter().text(
-                                pos2(rect.left() + 46.0, rect.top() + 30.0),
-                                Align2::LEFT_CENTER,
-                                format!("{}@{}:{} / {}", p.user, p.host, p.port, p.database),
-                                FontId::proportional(12.0),
-                                pal.faint,
-                            );
+                            let env_width =
+                                ui.fonts_mut(|f| f.layout_no_wrap(p.environment.badge_label().to_string(), theme::bold(10.5), pal.text).size().x) + 32.0;
+                            let text_width = rect.width() - 46.0 - env_width;
+                            let name = w::truncated(ui, &p.display_name(), theme::bold(13.5), pal.text, text_width);
+                            ui.painter().galley(pos2(rect.left() + 46.0, rect.top() + 5.0), name, pal.text);
+                            let endpoint = format!("{}@{}:{} / {}", p.user, p.host, p.port, p.database);
+                            let detail = w::truncated(ui, &endpoint, FontId::proportional(12.0), pal.faint, text_width);
+                            ui.painter().galley(pos2(rect.left() + 46.0, rect.top() + 23.0), detail, pal.faint);
+                            resp.clone().on_hover_text(format!("{} · {}\n{endpoint}", p.display_name(), p.environment.badge_label()));
                             if let Some(env) = p.environment.color() {
                                 let g = ui.fonts_mut(|f| f.layout_no_wrap(p.environment.label().to_string(), theme::bold(10.5), Color32::BLACK));
                                 let br = egui::Rect::from_min_size(pos2(rect.right() - g.size().x - 22.0, rect.center().y - 9.0), g.size() + vec2(10.0, 4.0));
@@ -1933,56 +1961,43 @@ impl eframe::App for App {
                 });
             });
 
-        // status bar
+        // Keep the connection counter and environment visible; long identity
+        // text can elide without pushing either control off the window.
         egui::Panel::bottom("statusbar").frame(egui::Frame::NONE.fill(pal.bg1).inner_margin(egui::Margin::symmetric(10, 3))).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let current = self.tabs.get(self.active).and_then(|t| match t {
-                    Tab::Query(q) => Some((q.profile_id?, q.database.clone(), q.session.as_ref())),
-                    other => Some((other.profile()?, String::new(), None)),
-                });
-                if let Some((pid, db, session)) = current
-                    && let Some(p) = self.profile(pid)
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let n = session::live_count();
+                if ui
+                    .add(egui::Button::new(RichText::new(format!("{}  {n} connection{}", icon::NETWORK, if n == 1 { "" } else { "s" })).small()).frame(false))
+                    .on_hover_text("Show open connections")
+                    .clicked()
                 {
-                    // Connection identity: environment · user@server · database
-                    if let Some(env) = p.environment.color() {
-                        egui::Frame::NONE.fill(theme::rgb(env)).corner_radius(4.0).inner_margin(egui::Margin::symmetric(6, 1)).show(ui, |ui| {
-                            ui.label(RichText::new(p.environment.label()).small().strong().color(Color32::BLACK));
-                        });
-                    }
-                    let c = p.color.map(theme::rgb).unwrap_or(pal.accent);
-                    let user = session.filter(|s| s.connected).map(|_| p.user.clone()).filter(|u| !u.is_empty()).unwrap_or_else(|| p.user.clone());
-                    ui.label(RichText::new(format!("{}  {}", icon::SERVER, p.display_name())).small().color(c))
-                        .on_hover_text(format!("{}@{}:{}", user, p.host, p.port));
-                    ui.label(
-                        RichText::new(format!("{}  {}", icon::USER, if user.is_empty() { "(signed-in account)".into() } else { user })).small().color(pal.dim),
-                    );
-                    if !db.is_empty() {
-                        ui.label(RichText::new(format!("{}  {}", icon::DATABASE, db)).small().color(pal.dim));
-                    }
-                    let q_session = session;
-                    if p.read_only {
-                        ui.label(RichText::new(format!("{}  read-only", icon::LOCK)).small().color(pal.warn));
-                    }
-                    if p.is_azure() {
-                        ui.label(RichText::new(format!("{}  Entra ID", icon::CLOUD)).small().color(pal.dim));
-                    }
-                    if let Some(s) = q_session
-                        && s.connected
-                    {
-                        ui.label(RichText::new(format!("PostgreSQL {}", s.server_version.split_whitespace().next().unwrap_or(""))).small().color(pal.faint));
-                    }
+                    self.show_connections = !self.show_connections;
                 }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let n = session::live_count();
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new(format!("{}  {n} connection{}", icon::NETWORK, if n == 1 { "" } else { "s" })).small())
-                                .frame(false),
-                        )
-                        .on_hover_text("Show open connections")
-                        .clicked()
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    let current = self.tabs.get(self.active).and_then(|t| match t {
+                        Tab::Query(q) => Some((q.profile_id?, q.database.as_str(), q.session.as_ref())),
+                        other => Some((other.profile()?, "", None)),
+                    });
+                    if let Some((pid, db, session)) = current
+                        && let Some(p) = self.profile(pid)
                     {
-                        self.show_connections = !self.show_connections;
+                        let color = p.environment.color().map(theme::rgb).unwrap_or(pal.faint);
+                        w::badge(ui, p.environment.badge_label(), color);
+                        if p.read_only {
+                            ui.label(RichText::new(icon::LOCK).small().color(pal.warn)).on_hover_text("Read-only connection");
+                        }
+                        if p.is_azure() {
+                            ui.label(RichText::new(icon::CLOUD).small().color(pal.dim)).on_hover_text("Microsoft Entra ID");
+                        }
+                        let user = if p.user.is_empty() { "(signed-in account)" } else { &p.user };
+                        let mut identity = format!("{} · {}@{}:{}", p.display_name(), user, p.host, p.port);
+                        if !db.is_empty() {
+                            identity.push_str(&format!(" · {db}"));
+                        }
+                        if let Some(s) = session.filter(|s| s.connected) {
+                            identity.push_str(&format!(" · PostgreSQL {}", s.server_version.split_whitespace().next().unwrap_or("")));
+                        }
+                        ui.add(egui::Label::new(RichText::new(&identity).small().color(pal.dim)).truncate()).on_hover_text(identity);
                     }
                 });
             });
@@ -3030,9 +3045,10 @@ fn server_row(
     expanded: bool,
     azure: bool,
     read_only: bool,
+    environment: Environment,
 ) -> (egui::Response, Option<usize>) {
     let pal = theme::p();
-    let h = 42.0;
+    let h = 60.0;
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::click());
     let hovered = resp.hovered() || ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| rect.contains(p));
     let p = ui.painter();
@@ -3054,7 +3070,7 @@ fn server_row(
     p.circle_filled(av.right_bottom() - vec2(1.0, 1.0), 4.5, pal.bg1);
     p.circle_filled(av.right_bottom() - vec2(1.0, 1.0), 3.2, status);
     let x = av.right() + 10.0;
-    let right_pad = if hovered { 58.0 } else { 6.0 };
+    let right_pad = 6.0;
     let max_w = (rect.right() - x - right_pad).max(10.0);
     let mut badges = String::new();
     if azure {
@@ -3080,10 +3096,18 @@ fn server_row(
         f.layout_job(j)
     });
     p.galley(pos2(x, rect.top() + 23.0), sub_g, pal.faint);
+    // A separate identity line keeps the environment visible even when names
+    // and endpoints consume the full width, or hover actions are displayed.
+    let env_label = environment.badge_label();
+    let env_color = environment.color().map(theme::rgb).unwrap_or(pal.faint);
+    let env_g = ui.fonts_mut(|f| f.layout_no_wrap(env_label.to_string(), theme::bold(10.0), env_color));
+    let env_rect = egui::Rect::from_min_size(pos2(x, rect.top() + 40.0), env_g.size() + vec2(10.0, 3.0));
+    p.rect_filled(env_rect, 4.0, env_color.gamma_multiply(0.14));
+    p.galley(env_rect.min + vec2(5.0, 1.5), env_g, env_color);
     let mut action = None;
     if hovered {
         for (i, (ic, tip)) in [(icon::FILE_PLUS, "New query"), (icon::REFRESH, "Reconnect / refresh")].iter().enumerate() {
-            let r = egui::Rect::from_center_size(pos2(rect.right() - 16.0 - (1 - i) as f32 * 26.0, rect.center().y), vec2(24.0, 24.0));
+            let r = egui::Rect::from_center_size(pos2(rect.right() - 16.0 - (1 - i) as f32 * 26.0, rect.bottom() - 12.0), vec2(24.0, 24.0));
             let br = ui.interact(r, resp.id.with(("act", i)), Sense::click());
             if br.hovered() {
                 ui.painter().rect_filled(r, 5.0, pal.bg2);
@@ -3094,7 +3118,8 @@ fn server_row(
             }
         }
     }
-    (resp, action)
+    let identity = format!("{name}\nEnvironment: {env_label}\n{subtitle}");
+    (resp.on_hover_text(identity), action)
 }
 
 /// One row of the object tree. Returns the row response and whether the
@@ -3174,7 +3199,8 @@ fn tree_row(
     }
     let chevron_clicked =
         expanded.is_some() && resp.clicked() && resp.interact_pointer_pos().is_some_and(|pt| chevron_rect.expand2(vec2(4.0, 0.0)).contains(pt));
-    (resp, chevron_clicked)
+    let tooltip = if detail.is_empty() { label.to_string() } else { format!("{label}\n{detail}") };
+    (resp.on_hover_text(tooltip), chevron_clicked)
 }
 
 impl RelKind {
@@ -3192,6 +3218,43 @@ impl RelKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn environment_badges_survive_long_sidebar_names_and_hover_actions() {
+        for theme_choice in [ThemeChoice::Dark, ThemeChoice::Light] {
+            for width in [215.0, 280.0] {
+                let context = egui::Context::default();
+                theme::apply(&context, theme_choice);
+                let name = "shared_customer_database_with_a_very_long_connection_profile_name";
+                let subtitle = "same-database.example.com:5432 · customer_database";
+                for hovered in [false, true] {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 300.0))),
+                        events: if hovered { vec![egui::Event::PointerMoved(pos2(width - 20.0, 48.0))] } else { vec![] },
+                        ..Default::default()
+                    };
+                    let mut output = context.run_ui(input, |ui| {
+                        for env in [Environment::Development, Environment::Production, Environment::None] {
+                            server_row(ui, name, subtitle, theme::p().accent, theme::p().success, false, false, false, env);
+                        }
+                    });
+                    for label in ["DEV", "PRODUCTION", "UNSET"] {
+                        let shape = output
+                            .shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Text(text) if text.galley.job.text == label => Some(text),
+                                _ => None,
+                            })
+                            .expect("environment badge must be painted");
+                        assert!(shape.pos.x + shape.galley.size().x <= width);
+                        assert!(!shape.galley.elided);
+                    }
+                    output.textures_delta.clear();
+                }
+            }
+        }
+    }
 
     #[test]
     fn browser_disconnect_discards_unsent_password_input() {

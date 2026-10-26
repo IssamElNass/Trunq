@@ -312,18 +312,16 @@ impl ConnDialog {
             color_picker(ui, &mut self.profile.color);
         });
         w::form_row(ui, "Environment", |ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            for env in crate::config::Environment::ALL {
-                let selected = self.profile.environment == env;
-                let label = if env == crate::config::Environment::None { "None" } else { env.label() };
-                if w::choice_chip(ui, selected, label, env.color().map(theme::rgb)).clicked() {
-                    self.profile.environment = env;
-                    // production connections get a red colour unless one was chosen
-                    if env == crate::config::Environment::Production && self.profile.color.is_none() {
-                        self.profile.color = env.color();
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+                for env in crate::config::Environment::ALL {
+                    let selected = self.profile.environment == env;
+                    let label = if env == crate::config::Environment::None { "None" } else { env.label() };
+                    if w::choice_chip(ui, selected, label, env.color().map(theme::rgb)).clicked() {
+                        self.profile.environment = env;
                     }
                 }
-            }
+            });
         });
         w::form_row(ui, "Group", |ui| {
             w::input(ui, &mut self.profile.group, "Optional, e.g. Customers or Analytics", Some(icon::FOLDER), 0.0);

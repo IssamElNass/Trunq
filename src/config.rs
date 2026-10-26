@@ -364,6 +364,9 @@ impl Environment {
             Environment::Production => "PRODUCTION",
         }
     }
+    pub fn badge_label(self) -> &'static str {
+        if self == Environment::None { "UNSET" } else { self.label() }
+    }
     /// Badge colour (RGB); production is always red.
     pub fn color(self) -> Option<[u8; 3]> {
         Some(match self {

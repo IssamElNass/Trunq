@@ -40,3 +40,9 @@ Remaining upstream **unmaintained** advisories: [ttf-parser](https://rustsec.org
 The [validation record](validation.md) records commands, real PostgreSQL/OpenSSH fixtures, screenshot captures and remote CI links. New screenshots are produced by the running native client with a disposable sample database and isolated workspace; cloud connection forms contain example values and perform no provider login.
 
 This was a focused source/dependency review and regression pass. It did not include an external penetration test, memory-forensics assessment, real cloud-provider accounts, OS-keychain end-to-end checks or a formal effective-privilege analysis. See [production operations](production.md) for TLS/SSH defaults, credential migration, audit retention and resource limitations. Report further vulnerabilities using [the private security-reporting process](../SECURITY.md).
+
+## SCRAM channel-binding correction
+
+The client uses SCRAM-SHA-256 without supplying channel-binding data. It now declares `n` (binding unsupported) rather than `y` (binding supported but allegedly unavailable on the server), which PostgreSQL rejects on TLS connections as a downgrade inconsistency. TLS modes, certificate validation and credential persistence are unchanged. This does not add SCRAM-SHA-256-PLUS support. A disposable PostgreSQL 17 TLS/SCRAM fixture reproduced the original fatal error with `y` and authenticated with `n`; Microsoft Entra browser authentication still requires a real Azure account/server retest.
+
+A fresh `cargo-audit 0.22.2` scan on 26 October 2026 reported zero vulnerable packages, the same four maintenance advisories, and a newly yanked `crypto-bigint 0.7.6` in the unchanged lockfile. No dependency versions or audit ignores were changed for this fix; the yanked-version warning remains follow-up work.

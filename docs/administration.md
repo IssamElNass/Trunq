@@ -121,6 +121,8 @@ This native query runs against the disposable PostgreSQL 17 sample server. Absen
 
 ## Inspect grants and edit scheduled jobs
 
-Open **Grants & access** under a database to inspect concrete privileges such as `SELECT` (read), `INSERT`, `UPDATE` and `DELETE`, plus owner, grantor and membership paths. PostgreSQL expands `GRANT ALL` into individual privileges; grant option is a separate ability to pass a right onward. See the [privilege reference](features.md#grants-and-access-tracing) for object types, filters, defaults and limits.
+Open **Grants & access** under a database. Choose **Inspect role**, then select an object/recipient row. Its permission badges summarize the matching grants. In **Permission details**, choose one privilege to see its plain-language meaning and its source; SQL actions target only that privilege and recipient. **Inherited** traces automatic role membership, **Not inherited** marks a path that does not automatically pass permissions, and **PUBLIC** means every role. The **Memberships** view explains inheritance, role switching and membership management separately.
+
+Inspect concrete privileges such as `SELECT` (read), `INSERT`, `UPDATE` and `DELETE`, plus owner, grantor and membership paths. PostgreSQL expands `GRANT ALL` into individual privileges; grant option is a separate ability to pass a right onward. See the [privilege reference](features.md#grants-and-access-tracing) for object types, filters, defaults and limits.
 
 Open **Cron jobs** to browse pg_cron schedules, commands, active status and recent runs. Edit the schedule/SQL, then open the generated pause, enable or update statement for review. Changes are applied only when you execute that SQL; read-only profiles disable edits. See [job controls](features.md#scheduled-jobs-pg_cron). The database must have pg_cron installed and your role must have the required schema/table/function privileges. Existing Database tools SQL templates remain available.
