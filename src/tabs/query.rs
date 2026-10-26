@@ -103,6 +103,25 @@ struct Running {
     params: Vec<Vec<Option<String>>>,
 }
 
+impl Running {
+    fn cursor(id: u64) -> Self {
+        Self {
+            id,
+            started: Instant::now(),
+            stmts: vec![],
+            current: 0,
+            explain: None,
+            fetch: true,
+            rows_total: 0,
+            ok: true,
+            dry: false,
+            stmt_started: Instant::now(),
+            first_result: None,
+            params: Vec::new(),
+        }
+    }
+}
+
 pub struct TableMode {
     pub schema: String,
     pub name: String,
@@ -507,28 +526,25 @@ impl QueryTab {
         if self.run.is_some() {
             return;
         }
-        let Some(session) = &self.session else { return };
+        let Some(session) = &mut self.session else { return };
         let Some(pane) = self.panes.last_mut() else { return };
         if !pane.more || pane.fetching {
             return;
         }
         pane.fetching = true;
-        let id = 1_000_000 + self.uid * 1000 + pane.rs.nrows() as u64 % 1000;
-        session.fetch_more(id, if all { 0 } else { ctx.settings.page_size.max(1000) });
-        self.run = Some(Running {
-            id,
-            started: Instant::now(),
-            stmts: vec![],
-            current: 0,
-            explain: None,
-            fetch: true,
-            rows_total: 0,
-            ok: true,
-            dry: false,
-            stmt_started: Instant::now(),
-            first_result: None,
-            params: Vec::new(),
-        });
+        let id = session.fetch_more(if all { 0 } else { ctx.settings.page_size.max(1000) });
+        self.run = Some(Running::cursor(id));
+        self.last_activity = Instant::now();
+    }
+
+    fn close_cursor(&mut self) {
+        if self.run.is_some() {
+            return;
+        }
+        let Some(session) = &mut self.session else { return };
+        let Some(pane) = self.panes.last_mut().filter(|p| p.more) else { return };
+        pane.fetching = true;
+        self.run = Some(Running::cursor(session.close_cursor()));
         self.last_activity = Instant::now();
     }
 
@@ -693,6 +709,9 @@ impl QueryTab {
                     }
                     if let Some(p) = self.panes.last_mut() {
                         p.fetching = false;
+                        if self.run.as_ref().is_some_and(|r| r.fetch) {
+                            p.more = false;
+                        }
                     }
                     let mut text = error.to_string();
                     if !error.code.is_empty() {
@@ -913,7 +932,7 @@ impl QueryTab {
         }
 
         // color strip for the connection (e.g. red = production)
-        if let Some(c) = self.profile(ctx).and_then(|p| p.color.or(p.environment.color())) {
+        if let Some(c) = self.profile(ctx).and_then(|p| p.environment.color().or(p.color)) {
             let r = ui.available_rect_before_wrap();
             ui.painter().hline(r.x_range(), r.top() + 1.0, egui::Stroke::new(2.0, theme::rgb(c)));
         }
@@ -941,7 +960,10 @@ impl QueryTab {
             self.filter_bar(ui, ctx);
             self.results(ui, ctx);
         } else {
-            let editor_h = (avail * self.split).clamp(40.0, (avail - 80.0).max(40.0));
+            // Reserve the result header and paging controls when a narrow
+            // toolbar leaves little height for the editor/results split.
+            let result_min = if !self.panes.is_empty() && ui.available_width() < 700.0 { 240.0 } else { 80.0 };
+            let editor_h = (avail * self.split).clamp(40.0, (avail - result_min).max(40.0));
             let catalog = ctx.catalog.clone();
             ui.allocate_ui(vec2(ui.available_width(), editor_h), |ui| {
                 egui::Frame::NONE.fill(pal.bg0).show(ui, |ui| {
@@ -1330,9 +1352,10 @@ impl QueryTab {
                 let current = self.profile(ctx).map(|p| p.display_name()).unwrap_or_else(|| "Choose connection".into());
                 let mut new_profile = None;
                 if self.table.is_none() {
-                    let resp = w::menu_button(ui, w::Kind::Secondary, icon::SERVER, &current, |ui| {
+                    let resp = w::menu_button_width(ui, w::Kind::Secondary, icon::SERVER, &current, if compact { 180.0 } else { 300.0 }, |ui| {
                         for p in ctx.profiles {
-                            let r = w::menu_check(ui, Some(p.id) == self.profile_id, &p.display_name());
+                            let r = w::menu_check(ui, Some(p.id) == self.profile_id, &format!("{} · {}", p.environment.badge_label(), p.display_name()))
+                                .on_hover_text(format!("{}@{}:{} / {}", p.user, p.host, p.port, p.database));
                             if r.clicked() {
                                 new_profile = Some(p.clone());
                             }
@@ -1348,8 +1371,9 @@ impl QueryTab {
                         self.session = None;
                     }
                 } else {
-                    ui.label(RichText::new(format!("{}  {current}", icon::SERVER)).color(pal.text));
-                    ui.label(RichText::new(format!("{}  {}", icon::DATABASE, self.database)).color(pal.dim));
+                    ui.add(egui::Label::new(RichText::new(format!("{}  {current}", icon::SERVER)).color(pal.text)).truncate()).on_hover_text(&current);
+                    ui.add(egui::Label::new(RichText::new(format!("{}  {}", icon::DATABASE, self.database)).color(pal.dim)).truncate())
+                        .on_hover_text(&self.database);
                 }
                 if let Some(p) = new_profile {
                     self.profile_id = Some(p.id);

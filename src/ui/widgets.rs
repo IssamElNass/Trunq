@@ -148,7 +148,7 @@ fn colors(kind: Kind, hovered: bool, pressed: bool, selected: bool) -> Colors {
 }
 
 /// The core button painter used by all variants.
-fn paint_button(ui: &mut Ui, kind: Kind, size: Size, ico: &str, label: &str, selected: bool, min_width: f32) -> Response {
+fn paint_button(ui: &mut Ui, kind: Kind, size: Size, ico: &str, label: &str, selected: bool, max_width: f32) -> Response {
     let (h, pad, font_size) = match size {
         Size::Regular => (H, 12.0, 13.5),
         Size::Small => (H_SMALL, 9.0, 12.5),
@@ -158,7 +158,14 @@ fn paint_button(ui: &mut Ui, kind: Kind, size: Size, ico: &str, label: &str, sel
     let icon_g = (!ico.is_empty()).then(|| ui.fonts_mut(|f| f.layout_no_wrap(ico.to_string(), FontId::proportional(font_size + 1.0), Color32::PLACEHOLDER)));
     let gap = if label_g.is_some() && icon_g.is_some() { 7.0 } else { 0.0 };
     let content_w = icon_g.as_ref().map_or(0.0, |g| g.size().x) + gap + label_g.as_ref().map_or(0.0, |g| g.size().x);
-    let w = if label.is_empty() { h } else { (content_w + pad * 2.0).max(min_width) };
+    // Bound identifiers to the container width, not the remaining line width,
+    // so wrapped toolbars can still move whole controls onto the next line.
+    let w = if label.is_empty() { h } else { (content_w + pad * 2.0).min(ui.max_rect().width().max(h)) };
+    let w = if max_width > 0.0 { w.min(max_width.max(h)) } else { w };
+    let clipped = content_w + pad * 2.0 > w;
+    let label_g = label_g
+        .map(|g| if clipped { truncated(ui, label, font, Color32::PLACEHOLDER, w - pad * 2.0 - icon_g.as_ref().map_or(0.0, |g| g.size().x) - gap) } else { g });
+    let content_w = icon_g.as_ref().map_or(0.0, |g| g.size().x) + gap + label_g.as_ref().map_or(0.0, |g| g.size().x);
     let (rect, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
     if ui.is_rect_visible(rect) {
         let enabled = ui.is_enabled();
@@ -188,7 +195,7 @@ fn paint_button(ui: &mut Ui, kind: Kind, size: Size, ico: &str, label: &str, sel
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
     }
-    resp
+    if clipped { resp.on_hover_text(label) } else { resp }
 }
 
 /// Regular 32 px button with an optional icon.
@@ -218,8 +225,12 @@ pub fn icon_toggle(ui: &mut Ui, selected: bool, ico: &str, tooltip: &str) -> Res
 
 /// A drop-down menu opened from a styled button.
 pub fn menu_button<R>(ui: &mut Ui, kind: Kind, ico: &str, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) -> Response {
+    menu_button_width(ui, kind, ico, label, 0.0, add_contents)
+}
+
+pub fn menu_button_width<R>(ui: &mut Ui, kind: Kind, ico: &str, label: &str, width: f32, add_contents: impl FnOnce(&mut Ui) -> R) -> Response {
     let text = if label.is_empty() { ico.to_string() } else { format!("{label}  {}", icon::CHEVRON_DOWN) };
-    let resp = paint_button(ui, kind, Size::Regular, if label.is_empty() { "" } else { ico }, &text, false, 0.0);
+    let resp = paint_button(ui, kind, Size::Regular, if label.is_empty() { "" } else { ico }, &text, false, width);
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(220.0);
         add_contents(ui)
@@ -380,7 +391,10 @@ fn menu_item_impl(ui: &mut Ui, ico: &str, label: &str, shortcut: &str, emphasize
             color.unwrap_or(if hovered { p.accent } else { p.dim }),
         );
     }
-    ui.painter().text(pos2(rect.left() + 36.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(13.5), fg);
+    let shortcut_w =
+        if shortcut.is_empty() { 0.0 } else { ui.fonts_mut(|f| f.layout_no_wrap(shortcut.to_string(), theme::mono(11.5), p.faint).size().x) + 16.0 };
+    let g = truncated(ui, label, FontId::proportional(13.5), fg, rect.width() - 48.0 - shortcut_w);
+    ui.painter().galley(pos2(rect.left() + 36.0, rect.center().y - g.size().y / 2.0), g, fg);
     if !shortcut.is_empty() {
         ui.painter().text(pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, shortcut, theme::mono(11.5), p.faint);
     }
@@ -390,7 +404,7 @@ fn menu_item_impl(ui: &mut Ui, ico: &str, label: &str, shortcut: &str, emphasize
     if resp.clicked() {
         ui.close();
     }
-    resp
+    resp.on_hover_text(label)
 }
 
 /// Small rounded label (counts, states, environment).
@@ -558,7 +572,8 @@ pub fn dropdown<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, 
     ui.painter().rect(rect, CornerRadius::same(RADIUS), fill, stroke, StrokeKind::Inside);
     let current = options.iter().find(|(v, _)| v == value).map_or("", |(_, l)| *l);
     let fg = if ui.is_enabled() { p.text } else { p.faint };
-    ui.painter().text(pos2(rect.left() + 11.0, rect.center().y), Align2::LEFT_CENTER, current, FontId::proportional(13.5), fg);
+    let g = truncated(ui, current, FontId::proportional(13.5), fg, rect.width() - 38.0);
+    ui.painter().galley(pos2(rect.left() + 11.0, rect.center().y - g.size().y / 2.0), g, fg);
     ui.painter().text(pos2(rect.right() - 14.0, rect.center().y), Align2::CENTER_CENTER, icon::CHEVRON_DOWN, FontId::proportional(13.0), p.dim);
     let mut changed = false;
     egui::Popup::menu(&resp).width(width).show(|ui| {
@@ -800,4 +815,37 @@ pub fn choice_chip(ui: &mut Ui, selected: bool, label: &str, dot: Option<Color32
     }
     ui.painter().galley_with_override_text_color(pos2(x, rect.center().y - g.size().y / 2.0), g, fg);
     resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_identifiers_fit_buttons_menus_and_dropdowns() {
+        let context = egui::Context::default();
+        let label = "a_very_long_database_or_connection_identifier_".repeat(8);
+        let mut output =
+            context.run_ui(egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(280.0, 240.0))), ..Default::default() }, |ui| {
+                let width = ui.available_width();
+                assert!(button(ui, Kind::Secondary, icon::SERVER, &label).rect.width() <= width);
+                assert!(menu_item(ui, icon::DATABASE, &label).rect.width() <= width);
+                dropdown(ui, &mut 0, &[(0, label.as_str())], width);
+            });
+        let labels: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == label => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels.len(), 3);
+        for text in labels {
+            assert!(text.galley.elided);
+            assert!(text.pos.x >= 0.0);
+            assert!(text.pos.x + text.galley.size().x <= 280.0);
+        }
+        output.textures_delta.clear();
+    }
 }

@@ -113,7 +113,7 @@ Charts do not perform a GROUP BY for you and do not inherit grid search/filter c
 
 ## Investigate a slow or blocked query
 
-1. Check the connection identity and the query/fetch/render timing. A slow server execution, a slow transfer and expensive rendering are different problems.
+1. Check the connection identity and the query/fetch/render timing (hover the result row count for the full breakdown). A slow server execution, a slow transfer and expensive rendering are different problems.
 2. For a query waiting on a lock, inspect the **Lock detective** information and the blocker. A blocker can be idle in a transaction while still holding locks.
 3. Open **Active sessions** to compare PIDs, application names, wait events, query age and transaction age. The view refreshes while visible; **Hide idle** can hide otherwise healthy client sessions.
 4. **Cancel** stops the current statement. **Terminate** disconnects the whole backend and rolls back its open transaction. Both require PostgreSQL permission; do not assume access to another user's session.

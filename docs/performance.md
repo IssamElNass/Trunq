@@ -89,3 +89,9 @@ The same Linux cloud environment, Rust 1.95 debug profile and loopback PostgreSQ
 The query grid implementation did not change. These final measurements include the integration with `9bf1377` and ran after native screenshot capture finished to avoid concurrent software-rendering load. New inspectors fetch only when opened or explicitly refreshed, release their database connections after completion, and do not add recurring server polling. Grant facets and counts are prepared once; unchanged filters reuse their row indices, including empty results, and role routes are cached. Tables render only visible rows. Opening an inspector in a background tab still completes its snapshot and releases the connection.
 
 Reproduce the grant workload with `cargo test --locked bench_grants_virtualized_frames -- --ignored --nocapture`. The two existing benchmark commands above exercise the query grid and protocol fetch. The baseline was an archive of the recorded commit built with the same toolchain, not a different machine or release profile.
+
+## 26 October 2026: grouped grants view
+
+On macOS with Rust 1.99.1 in the debug profile, the actual headless grants inspector rendered 100 cached frames of a 100,000-record inventory at **1.877 ms per frame** on average; an unchanged empty filter averaged **0.612 ms**. This is a local development observation, not a cross-machine comparison or a scroll-FPS guarantee. The grouped rows and membership lists render only the visible rows and rebuild their grouping/filter caches when the filters change.
+
+The same workload remains available through `cargo test --locked bench_grants_virtualized_frames -- --ignored --nocapture`. The presentation keeps original grant records separate for export and per-privilege SQL even when multiple permissions share one visible row.

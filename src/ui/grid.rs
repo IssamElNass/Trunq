@@ -700,7 +700,7 @@ pub fn show(ui: &mut Ui, id: Id, st: &mut GridState, mut g: GridCtx) -> Option<G
     let scroll_id = id.with("scroll");
 
     // ---- body ---------------------------------------------------------------------
-    let mut sa = egui::ScrollArea::both().id_salt(scroll_id).auto_shrink([false, false]);
+    let mut sa = egui::ScrollArea::both().id_salt(scroll_id).min_scrolled_height(0.0).auto_shrink([false, false]);
     if st.scroll_to_cursor
         && let Some(c) = st.cursor
     {
@@ -1572,6 +1572,19 @@ mod tests {
             assert!(pair[1] >= pair[0] - 1.0, "scroll reversed: {pair:?}");
         }
         assert!(offsets.last().unwrap() > &100_000.0);
+    }
+
+    #[test]
+    fn short_result_areas_leave_room_for_the_footer() {
+        let rs = data(&vec![Some("row"); 1000]);
+        let mut grid = GridState::default();
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 55.0))), ..Default::default() }, |ui| {
+            let bounds = ui.max_rect();
+            show(ui, Id::unique("short-grid"), &mut grid, ctx(&rs, None));
+            assert!(ui.min_rect().bottom() <= bounds.bottom() + 1.0);
+        });
+        output.textures_delta.clear();
     }
 
     #[test]
