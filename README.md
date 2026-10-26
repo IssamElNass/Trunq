@@ -100,7 +100,7 @@ Passwords are saved in your operating system keychain. Trunq also understands `~
 docker compose up --build -d
 ```
 
-Open [the local desktop](http://localhost:8080/vnc.html?autoconnect=true&resize=scale). The supplied Compose file binds to loopback and persists settings in a named volume. The [Docker guide](docs/docker.md) explains database connections, files, authentication considerations and image publishing.
+Open [Trunq in your browser](http://localhost:8080/). The interface renders directly in the browser, without VNC. The supplied Compose file binds to loopback and persists settings in a named volume. The [Docker guide](docs/docker.md) explains database connections, files, authentication considerations and image publishing.
 
 ## Install from source
 

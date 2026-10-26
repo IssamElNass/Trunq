@@ -121,7 +121,7 @@ const base = process.env.TRUNQ_SITE_URL || 'http://127.0.0.1:8000';
       const before = await restricted.locator('html').getAttribute('data-theme');
       await restricted.locator('[data-theme-toggle]').first().click();
       assert.notEqual(await restricted.locator('html').getAttribute('data-theme'), before);
-      await restricted.keyboard.press('Control+k');
+      await restricted.keyboard.press(await restricted.evaluate(() => window.Trunq.isMac) ? 'Meta+k' : 'Control+k');
       assert.equal(await restricted.locator('[data-palette]').isVisible(), true);
       await restricted.context().close(); checks++;
     }

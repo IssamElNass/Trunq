@@ -68,7 +68,7 @@ Remove-Item Env:TRUNQ_CONFIG_DIR
 
 The override affects settings, history and Trunq's SSH known-hosts file. It does not create a separate OS keychain. Copying profiles preserves their IDs and target fingerprints, so unchanged profiles can refer to the same keychain entries on the same computer. Changing their target selects different entries; older ID-only entries require credential re-entry after this update. Use separate directories for concurrent app instances to avoid competing writes to one configuration.
 
-In Docker, the supplied image uses `/data` for its workspace and Compose persists that directory in `trunq-data`. See [the Docker guide](docker.md) for file access and the desktop's keychain limitations.
+In Docker, the supplied image uses `/data` for its workspace and Compose persists that directory in `trunq-data`. See [the Docker guide](docker.md) for browser downloads, session-only passwords and the separate web workspace.
 
 ## Back up or move a workspace
 

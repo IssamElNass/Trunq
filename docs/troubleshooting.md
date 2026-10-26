@@ -24,7 +24,7 @@ Confirm the database User and database name. A currently supplied session passwo
 
 For `no pg_hba.conf entry`, PostgreSQL rejected the connection's source address, database, user or encryption combination. Ask the server administrator to check the intended rule. Increasing the connect timeout does not change an authentication rule.
 
-If Linux cannot remember a password, check that a Secret Service provider such as GNOME Keyring or KWallet is available and unlocked in that desktop session. The Docker desktop has no configured keychain service; use session entry or a protected password file there. macOS may request keychain access for the application; allow access if this is the app you intend to use.
+If Linux cannot remember a password, check that a Secret Service provider such as GNOME Keyring or KWallet is available and unlocked in that desktop session. The Docker browser client uses session-only passwords or a protected password file and does not require a keychain service. macOS may request keychain access for the application; allow access if this is the app you intend to use.
 
 ## TLS handshake or certificate errors
 
@@ -89,7 +89,7 @@ $env:WGPU_BACKEND = 'gl'
 .\Trunq.exe
 ```
 
-Linux needs an available graphical display; use the [Docker desktop](docker.md) when you need the packaged virtual-display setup. Record the exact startup error, OS and graphics environment when reporting the issue.
+The native Linux app needs an available graphical display. Use the [Docker browser client](docker.md) for the browser query workflow without a graphical display. Record the exact startup error, OS and graphics environment when reporting the issue.
 
 ## Settings or SQL tabs appear to have disappeared
 
