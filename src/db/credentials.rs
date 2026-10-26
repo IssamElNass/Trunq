@@ -55,7 +55,7 @@ impl TokenCommand {
     /// new token for each physical connection, including exports and reconnects.
     pub fn password(&self, host: &str, port: u16, user: &str, database: &str) -> Result<String> {
         let args = self.args(host, port, user, database);
-        let output = super::session::runtime().block_on(run(&self.executable, &args, Duration::from_secs(self.timeout_s.clamp(1, 300) as u64)))?;
+        let output = super::runtime().block_on(run(&self.executable, &args, Duration::from_secs(self.timeout_s.clamp(1, 300) as u64)))?;
         parse_token(output)
     }
 }
@@ -147,7 +147,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn helper_is_bounded_and_does_not_echo_credentials() {
-        super::super::session::runtime().block_on(async {
+        super::super::runtime().block_on(async {
             let call = async |script: &str, timeout| run("/bin/sh", &["-c".into(), script.into()], timeout).await;
             assert_eq!(call("printf token", Duration::from_secs(2)).await.unwrap(), b"token");
             for script in ["printf sensitive >&2; exit 7", "exec sleep 5", "yes sensitive"] {

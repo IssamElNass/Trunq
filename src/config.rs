@@ -442,6 +442,7 @@ pub struct Config {
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct TablePrefs {
+    #[cfg(feature = "desktop")]
     pub grid: crate::ui::grid::GridPrefs,
     pub filter: String,
     pub order: String,

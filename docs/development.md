@@ -130,3 +130,17 @@ python3 scripts/check-docs.py
 The SSH fixture uses `TRUNQ_TEST_SSH=user@host:port|/absolute/path/to/ed25519_key` plus `TRUNQ_TEST_DATABASE_URL` as seen from the bastion. The live test checks two channels sharing one login, cancel delivery and releasing the final handle. Use a disposable bastion with verified raw host keys; RSA and SSH host certificates are unsupported. The protocol live suite also exercises diagnostic flooding and queue reset.
 
 To capture only the nine new extension/authentication/audit/chart views, run `python3 scripts/screenshots.py --binary target/debug/trunq --suite new` with a display and the sample database. The default suite captures 21 views. Example cloud forms do not log in or save profiles; extension captures inspect inventory without enabling/updating anything. Review every image for sensitive data before committing.
+
+
+## Browser client
+
+The Docker browser client uses `src/web.rs` with embedded HTML/CSS/JavaScript in `web/`. Build it without desktop libraries with `cargo build --locked --no-default-features --features web`; run the resulting binary to open an HTTP server on `127.0.0.1:8080`. The native app remains the default Cargo feature.
+
+```sh
+cargo test --locked --no-default-features --features web
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo clippy --locked --all-targets --no-default-features --features web -- -D warnings
+TRUNQ_WEB_URL=http://127.0.0.1:8080 TRUNQ_TEST_DATABASE_URL=postgres://postgres:password@localhost:5432/postgres python3 scripts/smoke-web.py
+```
+
+Against that same running backend, use `node scripts/check-web-app.cjs` with `TRUNQ_WEB_URL` and `TRUNQ_TEST_DATABASE_URL`. Install Playwright outside the checkout as described in the [website guide](../website/README.md#check-website-changes). `NODE_PATH` selects the installation and `TRUNQ_CHROMIUM` can select a browser executable. `TRUNQ_WEB_SCREENSHOT` optionally saves a screenshot. The Docker workflow runs both API and browser checks against an isolated PostgreSQL container before publication. Use a disposable database. See [browser scope and deployment](docker.md) for the current feature set and resource limits.

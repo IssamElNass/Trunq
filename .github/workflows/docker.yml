@@ -1,7 +1,7 @@
 name: Docker
 on:
   pull_request:
-    paths: ["src/**", "assets/**", "Cargo.*", "Dockerfile", ".dockerignore", "packaging/docker/**", "compose.yaml", ".github/workflows/docker.yml"]
+    paths: ["src/**", "assets/**", "Cargo.*", "Dockerfile", ".dockerignore", "web/**", "scripts/smoke-web.py", "scripts/check-web-app.cjs", "compose.yaml", ".github/workflows/docker.yml"]
   push:
     branches: ["main"]
     tags: ["v*"]
@@ -29,18 +29,41 @@ jobs:
           tags: trunq:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Start desktop and verify client stays alive
+      - name: Start web client and verify PostgreSQL workflows
+        env:
+          TRUNQ_TEST_DATABASE_URL: postgres://postgres:smoke-password@trunq-postgres:5432/postgres
         run: |
-          docker run -d --name trunq-smoke -p 127.0.0.1:8080:8080 --shm-size=256m trunq:smoke
-          trap 'docker logs trunq-smoke; docker rm -f trunq-smoke' EXIT
+          docker network create trunq-smoke
+          docker run -d --name trunq-postgres --network trunq-smoke -e POSTGRES_PASSWORD=smoke-password postgres:18
+          docker run -d --name trunq-smoke --network trunq-smoke -p 127.0.0.1:8080:8080 trunq:smoke
+          trap 'docker logs trunq-smoke; docker rm -f trunq-smoke trunq-postgres; docker network rm trunq-smoke' EXIT
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8080/vnc.html > /dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null && docker exec trunq-postgres pg_isready -U postgres; then break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:8080/vnc.html > /dev/null
-          sleep 10
+          curl -fsS http://127.0.0.1:8080/ > /dev/null
+          python3 scripts/smoke-web.py
           test "$(docker inspect -f '{{.State.Running}}' trunq-smoke)" = true
-          docker exec trunq-smoke sh -c 'test -n "$(pgrep -x trunq)"'
+          docker exec trunq-smoke sh -c 'test ! -e /usr/bin/Xvfb && test ! -e /usr/bin/x11vnc'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check browser UI
+        env:
+          NODE_PATH: ${{ runner.temp }}/trunq-web-tests/node_modules
+          TRUNQ_TEST_DATABASE_URL: postgres://postgres:smoke-password@trunq-postgres:5432/postgres
+        run: |
+          npm install --prefix "$RUNNER_TEMP/trunq-web-tests" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/trunq-web-tests/node_modules/.bin/playwright" install --with-deps chromium
+          docker network create trunq-browser
+          docker run -d --name trunq-postgres --network trunq-browser -e POSTGRES_PASSWORD=smoke-password postgres:18
+          docker run -d --name trunq-browser --network trunq-browser -p 127.0.0.1:8080:8080 trunq:smoke
+          trap 'docker logs trunq-browser; docker rm -f trunq-browser trunq-postgres; docker network rm trunq-browser' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null && docker exec trunq-postgres pg_isready -U postgres; then break; fi
+            sleep 2
+          done
+          node scripts/check-web-app.cjs
   publish:
     needs: smoke
     if: (github.event_name == 'push' || inputs.publish) && vars.DOCKERHUB_USERNAME != ''

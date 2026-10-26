@@ -54,7 +54,8 @@ jobs:
       - name: Install system libraries
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libxkbcommon-dev libwayland-dev
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo clippy --no-default-features --features web --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -72,6 +73,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libxkbcommon-dev libwayland-dev
       - run: cargo build --locked
       - run: cargo test --locked
+      - run: cargo test --locked --no-default-features --features web
 
   postgres:
     name: Protocol tests (PostgreSQL ${{ matrix.pg }})
