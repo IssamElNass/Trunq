@@ -177,12 +177,13 @@ Example profile only; live provider prerequisites are documented in the cloud gu
 Open **Grants & access** under a database in the sidebar, its context menu or the command palette. A table or schema context menu opens a prefilled search.
 
 - Browse table, view, materialized view, foreign table, column, sequence, schema, routine, type, current database, language, foreign server / wrapper, tablespace and large-object ACLs. Catalog queries include grants that `information_schema.role_table_grants` can hide from the connected role.
-- Filter by role, schema, object type, grant option, PUBLIC access and text. System schemas are hidden initially. Copy the filtered inventory as CSV.
-- Select a privilege to see its owner, original grantor, recipient and a role-membership path. Role filters can include indirect memberships and PUBLIC. `NO INHERIT` paths remain visible with an explicit warning; they are not reported as automatic access. **Memberships** shows direct role edges, grantors, ADMIN, INHERIT and SET ROLE options, including PostgreSQL 16+ per-membership options.
+- **Inspect role** chooses whose access to trace. Search stays visible; the **Filters** menu contains schema/type, PUBLIC, grant-option, membership and system-object options. Active filters are summarized below the controls; **Reset** clears them. System schemas are hidden initially.
+- Each list row groups one object and recipient, with permission badges such as SELECT, INSERT and UPDATE. A **+N** badge means more permissions are available in the detail pane; hover it to list them. Filtered counts describe the visible objects, recipients and underlying grant records. CSV export preserves every matching grant record, including separate grantors.
+- Select an object/recipient row, then a privilege in **Permission details** to see its meaning, owner, original grantor, recipient and membership path. The selected row uses a neutral background, outline and slim accent marker, preserving readable text. Details sit beside the list on wide windows and below it on compact windows. At narrower list widths, the access path sits under the recipient so it stays visible without horizontal scrolling. Role filters can include indirect memberships and PUBLIC. `NO INHERIT` paths remain visible with an explicit warning; they are not reported as automatic access. **Memberships** shows direct role edges, grantors, ADMIN, INHERIT and SET ROLE options, including PostgreSQL 16+ per-membership options.
 - **Default privileges** lists future-object ACL rules separately from existing-object grants and built-in ACL defaults. Global and per-schema rules combine.
-- Copy a GRANT statement or open a REVOKE statement for review. Changes run only when you execute the SQL yourself. REVOKE does not add CASCADE. RLS-enabled objects link to their policies.
+- Copy a GRANT statement or open a REVOKE statement for the **selected privilege**, rather than the whole grouped row. Grants from different grantors remain separately selectable. Changes run only when you execute the SQL yourself. REVOKE does not add CASCADE. RLS-enabled objects link to their policies.
 
-The **Privilege** column shows the exact PostgreSQL right, one per row:
+The **Permissions** badges show concrete PostgreSQL rights. Select an individual privilege in the details pane to read its meaning and generate its SQL:
 
 | Privilege | Meaning |
 |---|---|

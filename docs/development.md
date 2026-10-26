@@ -64,7 +64,7 @@ src/
   Regenerate the sample gallery with `TRUNQ_TEST_DATABASE_URL=postgres://… python3 scripts/screenshots.py` after loading `dev/sample.sql` into a disposable database. The script uses an isolated temporary configuration and converts images to WebP when `cwebp` is installed.
 
   Steps: `wait:<s>`, `run`, `runall`, `dryrun`, `explain[:analyze]`, `sql:<text>` (separate with `;;`), `open:<schema.table>`,
-  `tab:<n>`, `palette:<query>`, `health`, `grants`, `cron`, `inspect:view=objects|defaults|memberships`, `inspect:role=<name>`, `inspect:search=<text>`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
+  `tab:<n>`, `palette:<query>`, `health`, `grants`, `cron`, `inspect:view=objects|defaults|memberships`, `inspect:role=<name>`, `inspect:search=<text>`, `inspect:group=<visible-row-index>`, `sessions`, `structure:<schema.table>`, `erd[:schema]`, `resize:<width>,<height>`, `chart`, `card`, `compare`, `value:<row>,<col>`,
   `pin`, `side`, `bottom`, `stoploading`, `search:<text>`, `ts:utc|local|raw`, `finder`, `hideempty`, `import:<file>`, `importrun`, `newconn[:aws|azure|tls|ssh]`, `extensions[:name]`,
   `connections`, `close`, `theme:light|dark`, `shot:<file.png>`, `quit`. Scripted runs never overwrite your saved workspace.
 

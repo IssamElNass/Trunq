@@ -69,6 +69,10 @@ The row editor is not an automatic conflict-resolution tool. Refresh and review 
 
 See [the scope reference](workflows.md#understand-which-data-a-tool-uses) before choosing an export option. If a numeric JSON value loses precision in another tool, export that column as text. For CSV, preserve quoted empty fields when another program distinguishes empty text from NULL.
 
+## Reading the grants inspector
+
+In the grants inspector, a **+N** permission badge abbreviates a grouped row; select it to see every matching grant in **Permission details**. The CSV export retains individual records. **Not inherited** is a membership path, not automatic access; inspect its SET ROLE options in **Memberships**. The neutral outlined row and slim accent marker identify the current selection.
+
 ## CSV import errors or surprising types
 
 Review **First row is a header**, the delimiter, normalized column names, inferred types and, for an existing table, every target-column mapping. Initial target mapping tries names and then positions. Selecting an existing table also exposes **Empty it first**, which truncates that table within the import transaction.

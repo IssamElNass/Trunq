@@ -12,6 +12,9 @@ All notable changes to Trunq are documented here. The format follows
 - Keep environment badges visible in the sidebar, query tabs and connection selector, including when multiple profiles share a database name. Production stays red independently of the custom profile colour; unlabelled profiles show UNSET.
 - Truncate long connection, object and menu names with full text on hover, reserve status-bar controls, and wrap environment choices in the connection dialog.
 
+### Changed
+- Redesign Grants & access around grouped object/recipient permissions, a plain-language detail pane and explicit direct, inherited, PUBLIC and non-inherited membership labels. Use a neutral outlined selection with an accent marker, compact filters and readable membership options; keep SQL actions scoped to one selected grant.
+
 ## [0.1.0] - 2026-10-27
 
 First public release.
