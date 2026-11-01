@@ -45,7 +45,7 @@ jobs:
           python3 scripts/smoke-web.py
           test "$(docker inspect -f '{{.State.Running}}' trunq-smoke)" = true
           docker exec trunq-smoke sh -c 'test ! -e /usr/bin/Xvfb && test ! -e /usr/bin/x11vnc'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Check browser UI
