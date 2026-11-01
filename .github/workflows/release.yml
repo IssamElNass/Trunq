@@ -223,7 +223,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: release-tools
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -306,7 +306,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-bundle
           path: .
