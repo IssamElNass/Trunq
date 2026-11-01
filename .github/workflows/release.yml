@@ -45,7 +45,7 @@ jobs:
       source_version: ${{ steps.v.outputs.source_version }}
       deb_version: ${{ steps.v.outputs.deb_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
       - uses: actions/setup-python@v5
@@ -54,7 +54,7 @@ jobs:
       - name: Test release routing
         run: python3 -m unittest discover -s scripts -p 'test_release_*.py' -v
       - name: Check out source to package
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != 'nightly' && github.event.inputs.tag || github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || github.sha }}
           path: source
@@ -75,7 +75,7 @@ jobs:
     env:
       HAS_SIGNING: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
@@ -141,7 +141,7 @@ jobs:
     needs: meta
     runs-on: ubuntu-22.04 # older glibc = runs on more distributions
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
@@ -183,7 +183,7 @@ jobs:
     needs: meta
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
@@ -214,12 +214,12 @@ jobs:
     needs: [meta, macos, linux, windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.meta.outputs.sha }}
           fetch-depth: 10
       - name: Load current release tooling (also when rebuilding an older tag)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: release-tools
